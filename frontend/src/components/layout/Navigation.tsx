@@ -6,26 +6,30 @@ import {
   BookOpen,
   Compass,
   Cpu,
+  Crosshair,
   Factory,
   Flame,
   Globe2,
   History,
   Info,
   LayoutDashboard,
+  Shield,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
-  { path: '/command-center', label: 'Command Center', icon: LayoutDashboard },
-  { path: '/incidents', label: 'Incidents', icon: Flame },
-  { path: '/map-explorer', label: 'Map Explorer', icon: Compass },
+  { path: '/command-center', label: 'Operations Center', icon: LayoutDashboard },
+  { path: '/incident/FW-1042', label: 'Incident Analysis', icon: Crosshair },
+  { path: '/risk-impact', label: 'Risk & Impact', icon: Shield },
+  { path: '/incidents', label: 'Incident Register', icon: Flame },
+  { path: '/map-explorer', label: 'GIS Explorer', icon: Compass },
   { path: '/thermal-history', label: 'Thermal History', icon: History },
-  { path: '/facility-watch', label: 'Facility Watch', icon: Factory },
+  { path: '/facility-watch', label: 'Facility Monitor', icon: Factory },
   { path: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { path: '/alerts', label: 'Alerts', icon: AlertTriangle },
+  { path: '/alerts', label: 'Alert Center', icon: AlertTriangle },
   { path: '/system-status', label: 'System Status', icon: Cpu },
   { path: '/methodology', label: 'Methodology', icon: BookOpen },
   { path: '/mission-brief', label: 'Mission Brief', icon: Info },
-  { path: '/', label: 'Global Overview', icon: Globe2 },
+  { path: '/', label: 'Global Earth', icon: Globe2 },
 ];
 
 export const Navigation: React.FC = () => {

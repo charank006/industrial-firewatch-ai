@@ -75,39 +75,27 @@ function createCirclePolygon(centerLat: number, centerLng: number, radiusMeters:
   return [coords];
 }
 
-export function riskZonesToGeoJSON(incident: ThermalHotspot | null): GeoJSONFeatureCollection {
+export function riskZonesToGeoJSON(incident: ThermalHotspot | null, customRadiusMeters = 1000): GeoJSONFeatureCollection {
   if (!incident) {
     return { type: 'FeatureCollection', features: [] };
   }
 
+  const radii = [
+    { radius: customRadiusMeters * 0.5, level: 'critical', label: '500m High Risk Buffer' },
+    { radius: customRadiusMeters, level: 'warning', label: '1km Danger Zone' },
+    { radius: customRadiusMeters * 2, level: 'monitoring', label: '2km Monitoring Sector' },
+  ];
+
   return {
     type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: createCirclePolygon(incident.lat, incident.lng, 500),
-        },
-        properties: { label: '500m High Risk Buffer', radius: 500, level: 'critical' },
+    features: radii.map((r) => ({
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: createCirclePolygon(incident.lat, incident.lng, r.radius),
       },
-      {
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: createCirclePolygon(incident.lat, incident.lng, 1000),
-        },
-        properties: { label: '1km Medium Risk Buffer', radius: 1000, level: 'warning' },
-      },
-      {
-        type: 'Feature',
-        geometry: {
-          type: 'Polygon',
-          coordinates: createCirclePolygon(incident.lat, incident.lng, 2000),
-        },
-        properties: { label: '2km Sector Risk Buffer', radius: 2000, level: 'monitoring' },
-      },
-    ],
+      properties: { label: r.label, radius: r.radius, level: r.level },
+    })),
   };
 }
 

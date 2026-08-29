@@ -7,12 +7,14 @@ import { AlertsPage } from './pages/Alerts/AlertsPage';
 import { AnalyticsPage } from './pages/Analytics/AnalyticsPage';
 import { CommandCenterPage } from './pages/CommandCenter/CommandCenterPage';
 import { FacilityWatchPage } from './pages/FacilityWatch/FacilityWatchPage';
+import { IncidentAnalysisPage } from './pages/IncidentAnalysis/IncidentAnalysisPage';
 import { IncidentDetailsPage } from './pages/IncidentDetails/IncidentDetailsPage';
 import { IncidentsPage } from './pages/Incidents/IncidentsPage';
 import { LandingPage } from './pages/Landing/LandingPage';
 import { MapExplorerPage } from './pages/MapExplorer/MapExplorerPage';
 import { MethodologyPage } from './pages/Methodology/MethodologyPage';
 import { MissionBriefPage } from './pages/MissionBrief/MissionBriefPage';
+import { RiskImpactPage } from './pages/RiskImpact/RiskImpactPage';
 import { SystemStatusPage } from './pages/SystemStatus/SystemStatusPage';
 import { ThermalHistoryPage } from './pages/ThermalHistory/ThermalHistoryPage';
 
@@ -29,11 +31,13 @@ const AppContent: React.FC = () => {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/command-center" element={<CommandCenterPage />} />
-          <Route path="/incidents" element={<IncidentsPage />} />
+          <Route path="/incident/:incidentId" element={<IncidentAnalysisPage />} />
           <Route path="/incidents/:id" element={<IncidentDetailsPage />} />
+          <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/map-explorer" element={<MapExplorerPage />} />
           <Route path="/thermal-history" element={<ThermalHistoryPage />} />
           <Route path="/facility-watch" element={<FacilityWatchPage />} />
+          <Route path="/risk-impact" element={<RiskImpactPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/system-status" element={<SystemStatusPage />} />
