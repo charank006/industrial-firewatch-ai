@@ -11,8 +11,13 @@ export const LandingPage: React.FC = () => {
   const globeElRef = useRef<HTMLDivElement>(null);
   const globeInstanceRef = useRef<any>(null);
 
-  // Selected Incident State
+  // Selected Incident State & Ref to prevent useEffect re-triggering
   const [selectedIncident, setSelectedIncident] = useState<HistoricalEvent | null>(null);
+  const selectedIncidentRef = useRef<HistoricalEvent | null>(null);
+  selectedIncidentRef.current = selectedIncident;
+
+  // Track marker DOM element refs for visual state updates without globe re-renders
+  const markerElementsRef = useRef<Map<string, { core: HTMLDivElement; halo: HTMLDivElement }>>(new Map());
 
   // Telemetry Clock
   const [timeStr, setTimeStr] = useState<string>('');
@@ -37,7 +42,7 @@ export const LandingPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Initialize Globe.GL Earth
+  // Initialize Globe.GL Earth ONCE on mount
   useEffect(() => {
     if (!globeElRef.current) return;
 
@@ -57,64 +62,93 @@ export const LandingPage: React.FC = () => {
       .atmosphereAltitude(0.24)
       .htmlElementsData(HISTORICAL_EVENTS)
       .htmlElement((d: HistoricalEvent) => {
-        const isSelected = selectedIncident?.id === d.id;
-
         const container = document.createElement('div');
-        container.className = 'relative flex items-center justify-center group cursor-pointer';
+        container.className = 'relative flex items-center justify-center cursor-pointer';
         container.style.transform = 'translate(-50%, -50%)';
+        container.style.pointerEvents = 'auto';
+        container.style.zIndex = '100';
 
-        // Outer Glow / Animation Layer
+        // Outer Glow / Breathing Animation Layer
         const halo = document.createElement('div');
         halo.style.position = 'absolute';
         halo.style.borderRadius = '50%';
+        halo.className = 'animate-historical-breath';
+        halo.style.width = '20px';
+        halo.style.height = '20px';
+        halo.style.backgroundColor = 'rgba(245, 158, 11, 0.25)';
 
         // Inner Marker Core
         const core = document.createElement('div');
         core.style.borderRadius = '50%';
         core.style.transition = 'all 0.2s ease';
-
-        if (isSelected) {
-          // SELECTED STATE: Static highlighted circle, WHITE outline, NO pulse
-          core.style.width = '14px';
-          core.style.height = '14px';
-          core.style.backgroundColor = '#F59E0B';
-          core.style.border = '2px solid #FFFFFF';
-          core.style.boxShadow = '0 0 14px rgba(255, 255, 255, 0.95)';
-          halo.style.display = 'none';
-        } else {
-          // UNSELECTED HISTORICAL STATE: Small amber dot + slow 5s soft halo (NO RED ANIMATION)
-          core.style.width = '9px';
-          core.style.height = '9px';
-          core.style.backgroundColor = '#F59E0B';
-          core.style.boxShadow = '0 0 6px rgba(245, 158, 11, 0.6)';
-
-          halo.className = 'animate-historical-breath';
-          halo.style.width = '20px';
-          halo.style.height = '20px';
-          halo.style.backgroundColor = 'rgba(245, 158, 11, 0.25)';
-        }
+        core.style.width = '9px';
+        core.style.height = '9px';
+        core.style.backgroundColor = '#F59E0B';
+        core.style.boxShadow = '0 0 6px rgba(245, 158, 11, 0.6)';
 
         container.appendChild(halo);
         container.appendChild(core);
 
-        // Hover Tooltip (Approx 2 lines)
+        // Store reference for quick highlight updates
+        markerElementsRef.current.set(d.id, { core, halo });
+
+        // Hover Tooltip (Concise 2-line dark tooltip <230px)
         const tooltip = document.createElement('div');
-        tooltip.className =
-          'absolute bottom-5 left-1/2 -translate-x-1/2 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-50 w-max max-w-[230px] bg-[#081019]/95 border border-white/20 rounded p-2 text-left font-mono text-[10px] text-white shadow-2xl backdrop-blur-md';
+        tooltip.style.position = 'absolute';
+        tooltip.style.bottom = '22px';
+        tooltip.style.left = '50%';
+        tooltip.style.transform = 'translateX(-50%)';
+        tooltip.style.pointerEvents = 'none';
+        tooltip.style.opacity = '0';
+        tooltip.style.visibility = 'hidden';
+        tooltip.style.transition = 'opacity 0.2s ease, visibility 0.2s ease';
+        tooltip.style.zIndex = '999';
+        tooltip.style.width = 'max-content';
+        tooltip.style.maxWidth = '220px';
+        tooltip.style.backgroundColor = 'rgba(8, 16, 25, 0.96)';
+        tooltip.style.border = '1px solid rgba(255, 255, 255, 0.25)';
+        tooltip.style.borderRadius = '6px';
+        tooltip.style.padding = '8px 10px';
+        tooltip.style.fontFamily = 'monospace';
+        tooltip.style.fontSize = '10px';
+        tooltip.style.color = '#FFFFFF';
+        tooltip.style.boxShadow = '0 10px 25px rgba(0,0,0,0.8)';
+        tooltip.style.backdropFilter = 'blur(8px)';
+
         tooltip.innerHTML = `
-          <div style="font-weight: 700; color: #FFFFFF; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;">${d.name}</div>
-          <div style="color: #94A3B8; font-size: 9.5px; margin-top: 1px;">${d.date} &bull; ${d.country.toUpperCase()}</div>
-          <div style="color: #CBD5E1; font-size: 9px; margin-top: 3px; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${d.shortSummary}</div>
+          <div style="font-weight: 700; color: #FFFFFF; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;">${d.name}</div>
+          <div style="color: #94A3B8; font-size: 9px; margin-top: 2px;">${d.date} &bull; ${d.country.toUpperCase()}</div>
+          <div style="color: #CBD5E1; font-size: 8.5px; margin-top: 3px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${d.shortSummary}</div>
         `;
         container.appendChild(tooltip);
 
-        // Click Handler
-        container.onclick = (e) => {
+        // Bulletproof Hover Event Handlers
+        container.addEventListener('mouseenter', () => {
+          tooltip.style.opacity = '1';
+          tooltip.style.visibility = 'visible';
+        });
+
+        container.addEventListener('mouseleave', () => {
+          tooltip.style.opacity = '0';
+          tooltip.style.visibility = 'hidden';
+        });
+
+        // Bulletproof Pointer & Click Handlers (Stop Propagation for Three.js OrbitControls)
+        const handleClick = (e: MouseEvent | TouchEvent) => {
           e.stopPropagation();
-          world.controls().autoRotate = false;
+          e.preventDefault();
+          
+          if (world.controls()) {
+            world.controls().autoRotate = false;
+          }
+          
           setSelectedIncident(d);
           world.pointOfView({ lat: d.lat, lng: d.lng, altitude: 0.45 }, 1200);
         };
+
+        container.addEventListener('pointerdown', (e) => e.stopPropagation());
+        container.addEventListener('mousedown', (e) => e.stopPropagation());
+        container.addEventListener('click', handleClick);
 
         return container;
       });
@@ -159,6 +193,28 @@ export const LandingPage: React.FC = () => {
         globeElRef.current.innerHTML = '';
       }
     };
+  }, []); // Run ONCE on mount
+
+  // Synchronize Marker Visual States when selectedIncident changes
+  useEffect(() => {
+    markerElementsRef.current.forEach((el, id) => {
+      const isSelected = selectedIncident?.id === id;
+      if (isSelected) {
+        el.core.style.width = '14px';
+        el.core.style.height = '14px';
+        el.core.style.backgroundColor = '#F59E0B';
+        el.core.style.border = '2px solid #FFFFFF';
+        el.core.style.boxShadow = '0 0 14px rgba(255, 255, 255, 0.95)';
+        el.halo.style.display = 'none';
+      } else {
+        el.core.style.width = '9px';
+        el.core.style.height = '9px';
+        el.core.style.backgroundColor = '#F59E0B';
+        el.core.style.border = 'none';
+        el.core.style.boxShadow = '0 0 6px rgba(245, 158, 11, 0.6)';
+        el.halo.style.display = 'block';
+      }
+    });
   }, [selectedIncident]);
 
   const handleClosePanel = () => {
@@ -259,8 +315,8 @@ export const LandingPage: React.FC = () => {
             </div>
 
             <div>
-              <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">SUMMARY</span>
-              <p className="text-white/90 leading-relaxed text-xs">{selectedIncident.shortSummary}</p>
+              <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">WHAT HAPPENED</span>
+              <p className="text-white/90 leading-relaxed text-xs">{selectedIncident.details || selectedIncident.shortSummary}</p>
             </div>
 
             <div>

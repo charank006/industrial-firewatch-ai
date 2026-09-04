@@ -20,32 +20,34 @@ export const Header: React.FC = () => {
   }, []);
 
   return (
-    <header className="h-14 bg-[#081019] border-b border-[#253340] px-4 flex items-center justify-between z-30 relative shrink-0">
+    <header className="h-14 bg-[#060A10] border-b border-[#1E2C3B] px-5 flex items-center justify-between z-30 relative shrink-0 font-sans selection:bg-[#3DB7D9]">
       {/* Brand & Identity */}
       <div className="flex items-center space-x-3">
-        <div className="w-7 h-7 rounded bg-[#0D151E] border border-[#253340] flex items-center justify-center text-[#3DB7D9]">
+        <div className="w-8 h-8 rounded-lg bg-[#0E1724] border border-[#1E2C3B] flex items-center justify-center text-[#3DB7D9] shadow-inner">
           <Radar className="w-4 h-4" />
         </div>
-        <div>
-          <span className="font-semibold text-sm tracking-wide text-white">FIREWATCH <span className="text-[#3DB7D9]">AI</span></span>
-          <span className="text-[10px] text-[#A7B4C1] ml-2 px-1.5 py-0.5 bg-[#0D151E] border border-[#253340] rounded font-mono">
-            SATELLITE THERMAL INTELLIGENCE
+        <div className="flex items-center space-x-2">
+          <span className="font-bold text-sm tracking-tight text-white uppercase font-mono">
+            INDUSTRIAL FIREWATCH <span className="text-[#3DB7D9]">AI</span>
+          </span>
+          <span className="text-[9.5px] text-[#A7B4C1] px-2 py-0.5 bg-[#0A121E] border border-[#1E2C3B] rounded font-mono font-semibold tracking-wider">
+            EARTH OBSERVATION WORKSTATION
           </span>
         </div>
       </div>
 
-      {/* Live Monitoring Badge & DEMO DATA Tag */}
+      {/* Live Monitoring Badge & Operational Tag */}
       <div className="hidden md:flex items-center space-x-3 font-mono text-xs">
-        <div className="flex items-center space-x-2 px-2.5 py-1 bg-[#0D151E] border border-[#253340] rounded">
-          <span className="w-2 h-2 rounded-full bg-[#39B978]" />
-          <span className="text-[#39B978] font-medium text-[11px]">
+        <div className="flex items-center space-x-2 px-3 py-1 bg-[#0A121E] border border-[#1E2C3B] rounded-md">
+          <span className="w-2 h-2 rounded-full bg-[#39B978] shadow-[0_0_8px_#39B978]" />
+          <span className="text-[#39B978] font-bold text-[10.5px] tracking-wider uppercase">
             SYSTEM OPERATIONAL
           </span>
         </div>
 
-        <div className="flex items-center space-x-2 px-2.5 py-1 bg-[#0D151E] border border-[#253340] rounded">
-          <span className="text-[11px] text-[#E8A93A] font-medium">
-            DEMO DATA (FIRMS INTEGRATION READY)
+        <div className="flex items-center space-x-2 px-3 py-1 bg-[#0A121E] border border-[#1E2C3B] rounded-md">
+          <span className="text-[10.5px] text-[#E8A93A] font-bold tracking-wider uppercase">
+            DEMO DATA &bull; VIIRS 375M
           </span>
         </div>
       </div>
@@ -57,7 +59,7 @@ export const Header: React.FC = () => {
           <select
             value={filters.region}
             onChange={(e) => setFilters((prev) => ({ ...prev, region: e.target.value }))}
-            className="pl-8 pr-3 py-1 bg-[#0D151E] border border-[#253340] text-slate-200 text-xs rounded focus:outline-none focus:border-[#3DB7D9]"
+            className="pl-8 pr-3 py-1 bg-[#0A121E] border border-[#1E2C3B] text-slate-200 text-xs rounded-md focus:outline-none focus:border-[#3DB7D9] transition"
           >
             <option value="Gujarat Industrial Corridor">Gujarat Industrial Corridor (IN)</option>
             <option value="Permian Petrochemical Zone">Permian Petrochemical Basin (US)</option>
@@ -72,20 +74,20 @@ export const Header: React.FC = () => {
             placeholder="Search FW ID, facility..."
             value={filters.searchKeyword}
             onChange={(e) => setFilters((prev) => ({ ...prev, searchKeyword: e.target.value }))}
-            className="pl-8 pr-3 py-1 bg-[#0D151E] border border-[#253340] text-xs text-slate-200 placeholder-[#6F7E8D] rounded w-36 sm:w-48 focus:outline-none focus:border-[#3DB7D9]"
+            className="pl-8 pr-3 py-1 bg-[#0A121E] border border-[#1E2C3B] text-xs text-slate-200 placeholder-[#6F7E8D] rounded-md w-36 sm:w-48 focus:outline-none focus:border-[#3DB7D9] transition"
           />
         </div>
 
-        {/* Live Timestamp */}
-        <div className="hidden xl:block text-[11px] text-[#A7B4C1] bg-[#0D151E] px-2.5 py-1 border border-[#253340] rounded">
+        {/* Live Clock */}
+        <div className="hidden xl:block text-[10.5px] text-[#A7B4C1] bg-[#0A121E] px-3 py-1 border border-[#1E2C3B] rounded-md font-mono">
           {timeString}
         </div>
 
         {/* Notification Counter */}
-        <div className="relative flex items-center justify-center w-7 h-7 rounded bg-[#0D151E] border border-[#253340] text-slate-300 hover:text-white cursor-pointer transition">
-          <Bell className="w-3.5 h-3.5" />
+        <div className="relative flex items-center justify-center w-8 h-8 rounded-md bg-[#0A121E] border border-[#1E2C3B] text-slate-300 hover:text-white cursor-pointer transition">
+          <Bell className="w-4 h-4" />
           {unresolvedCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-[#F04438] text-white text-[9px] font-mono font-bold rounded-full flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#F04438] text-white text-[9px] font-mono font-bold rounded-full flex items-center justify-center shadow">
               {unresolvedCount}
             </span>
           )}
