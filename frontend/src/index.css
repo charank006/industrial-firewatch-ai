@@ -33,6 +33,58 @@
   }
 }
 
+.bg-radial-vignette {
+  background: radial-gradient(circle at center, transparent 20%, rgba(0, 0, 0, 0.45) 65%, rgba(0, 0, 0, 0.9) 100%);
+}
+
+/* Globe Historical & Operational Incident Marker Animations */
+@keyframes historical-soft-breath {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.35), 0 0 12px rgba(245, 158, 11, 0.15);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.3);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.6), 0 0 24px rgba(245, 158, 11, 0.3);
+    opacity: 1;
+  }
+}
+
+.animate-historical-breath {
+  animation: historical-soft-breath 5s ease-in-out infinite;
+}
+
+@keyframes confirmed-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+  }
+  50% {
+    transform: scale(1.4);
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.95);
+  }
+}
+
+.animate-confirmed-pulse {
+  animation: confirmed-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes high-risk-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(249, 115, 22, 0.5);
+  }
+  50% {
+    transform: scale(1.3);
+    box-shadow: 0 0 14px rgba(249, 115, 22, 0.8);
+  }
+}
+
+.animate-high-risk-pulse {
+  animation: high-risk-pulse 2.2s ease-in-out infinite;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
