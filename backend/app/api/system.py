@@ -16,6 +16,7 @@ from fastapi import APIRouter
 from app.config import settings
 from app.database.connection import probe_postgis, probe_postgres
 from app.services.firms_service import probe_map_key
+from app.services.classifier.scorer import load_rules
 from app.services.osm.client import probe_overpass
 from app.services.weather_service import probe_open_meteo
 from app.workers.jobs import probe_worker
@@ -24,6 +25,19 @@ from app.workers.scheduler import job_status
 router = APIRouter(tags=["system"])
 
 _STARTED_AT = time.monotonic()
+
+
+def _classifier_probe() -> tuple[bool, str]:
+    """Report the loaded rule model. Never raises - a malformed rules file
+    should degrade the status page, not take the API down."""
+    try:
+        rules, version = load_rules()
+        return True, (
+            f"{version} loaded - {len(rules['classes'])} classes, "
+            f"{len(rules['weights'])} evidence terms, T={rules['temperature']}"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Rule model failed to load: {type(exc).__name__}: {str(exc)[:120]}"
 
 
 def _probe_result(ok: bool, detail: str, latency_ms: float | None = None) -> Dict[str, Any]:
@@ -82,7 +96,7 @@ async def get_system_status():
         "firms": {**firms, "checked_at": checked_at},
         "open_meteo": {**meteo, "checked_at": checked_at},
         "overpass": {**overpass, "checked_at": checked_at},
-        "classifier": _probe_result(False, "Not wired yet (Phase 5)"),
+        "classifier": _probe_result(*_classifier_probe()),
         "worker": {**worker, "checked_at": checked_at},
     }
 
