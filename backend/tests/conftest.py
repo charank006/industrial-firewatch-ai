@@ -3,6 +3,10 @@
 Database tests run against a real PostGIS instance - the whole point of the
 event engine is its spatial SQL, and mocking ST_DWithin would test nothing.
 They skip cleanly when no database is reachable.
+
+They connect to settings.test_database_url (firewatch_db_test by default),
+NEVER to DATABASE_URL: these fixtures TRUNCATE between tests, so sharing the
+development database would destroy real ingested detections on every run.
 """
 
 import datetime
@@ -29,7 +33,7 @@ TABLES = [
 
 @pytest_asyncio.fixture
 async def db():
-    engine = create_async_engine(settings.DATABASE_URL, poolclass=None)
+    engine = create_async_engine(settings.test_database_url, poolclass=None)
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT PostGIS_Version()"))

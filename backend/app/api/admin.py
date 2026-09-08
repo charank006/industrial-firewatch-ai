@@ -20,6 +20,7 @@ from app.config import settings
 from app.database.connection import get_db
 from app.seed_data import FACILITIES_DB
 from app.services import firms_service, weather_service
+from app.services.analysis_service import drain_pending
 from app.services.fire_event_service import (
     mark_stale_events_contained,
     process_detections,
@@ -236,3 +237,19 @@ async def ingest(
         **result.as_dict(),
         "events_marked_contained": contained,
     }
+
+
+@router.post("/analyze")
+async def analyze_pending(
+    limit: int = Query(5, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    x_admin_token: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Drain pending events through OSM + weather enrichment.
+
+    Highest-FRP first: Overpass is the bottleneck, so the strongest signals
+    get enriched before an arbitrary slice of a large backlog.
+    """
+    warning = require_admin(x_admin_token)
+    results = await drain_pending(db, limit=limit)
+    return {"warning": warning, "analysed": len(results), "results": results}

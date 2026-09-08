@@ -23,6 +23,19 @@ class Settings(BaseSettings):
     # --- Spatial database (PostgreSQL + PostGIS) -------------------------
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/firewatch_db"
 
+    # Separate database for tests. The DB fixtures TRUNCATE between tests, so
+    # pointing them at DATABASE_URL would wipe real ingested detections on
+    # every `pytest` run.
+    TEST_DATABASE_URL: str = ""
+
+    @property
+    def test_database_url(self) -> str:
+        """Defaults to the main URL with a `_test` suffix on the database name."""
+        if self.TEST_DATABASE_URL:
+            return self.TEST_DATABASE_URL
+        base, _, name = self.DATABASE_URL.rpartition("/")
+        return f"{base}/{name}_test"
+
     # --- Area of interest ------------------------------------------------
     # FIRMS area API wants west,south,east,north. Default covers the Gujarat
     # industrial corridor the dashboard is built around.

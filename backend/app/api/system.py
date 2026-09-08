@@ -16,6 +16,7 @@ from fastapi import APIRouter
 from app.config import settings
 from app.database.connection import probe_postgis, probe_postgres
 from app.services.firms_service import probe_map_key
+from app.services.osm.client import probe_overpass
 from app.services.weather_service import probe_open_meteo
 
 router = APIRouter(tags=["system"])
@@ -64,8 +65,8 @@ async def get_system_status():
     detail rather than a reassuring literal.
     """
     checked_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    pg, gis, firms, meteo = await asyncio.gather(
-        probe_postgres(), probe_postgis(), probe_map_key(), probe_open_meteo()
+    pg, gis, firms, meteo, overpass = await asyncio.gather(
+        probe_postgres(), probe_postgis(), probe_map_key(), probe_open_meteo(), probe_overpass()
     )
 
     probes: Dict[str, Dict[str, Any]] = {
@@ -73,7 +74,7 @@ async def get_system_status():
         "postgis": {**gis, "checked_at": checked_at},
         "firms": {**firms, "checked_at": checked_at},
         "open_meteo": {**meteo, "checked_at": checked_at},
-        "overpass": _probe_result(False, "Not wired yet (Phase 4)"),
+        "overpass": {**overpass, "checked_at": checked_at},
         "classifier": _probe_result(False, "Not wired yet (Phase 5)"),
         "worker": _probe_result(False, "Not wired yet (Phase 7)"),
     }
