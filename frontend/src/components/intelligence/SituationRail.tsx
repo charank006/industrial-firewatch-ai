@@ -27,7 +27,7 @@ export const SituationRail: React.FC = () => {
           </span>
         </div>
         <span className="text-[10px] px-1.5 py-0.5 bg-[#0D151E] text-slate-300 border border-[#253340] rounded">
-          GUJARAT
+          {filters.region.toUpperCase()}
         </span>
       </div>
 

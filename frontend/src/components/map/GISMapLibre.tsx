@@ -44,6 +44,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     setSelectedIncident,
     setSelectedFacility,
     setIsDrawerOpen,
+    isDrawerOpen,
     layers,
     mapMode,
   } = useIntelligence();
@@ -134,6 +135,22 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-left');
     mapRef.current = map;
+
+    // The canvas is sized once at construction, and MapLibre only watches the
+    // WINDOW. This map's container changes width on its own - the intelligence
+    // drawer opening takes ~470px of it - which left the canvas overflowing
+    // its box, so the map rendered wider than the space it had and its centre
+    // sat off to one side of the visible area.
+    const resizeObserver = new ResizeObserver(() => map.resize());
+    resizeObserver.observe(mapContainerRef.current);
+
+    // The observer covers later changes, but not the mount race: MapLibre
+    // measures the container while the surrounding flex layout is still
+    // settling, so the canvas is born at the pre-layout width and the
+    // observer sees no subsequent *change* to react to. Re-measuring on the
+    // next frame and again on load is what actually fixes the first paint.
+    const initialResize = requestAnimationFrame(() => map.resize());
+    map.once('load', () => map.resize());
 
     map.on('load', () => {
       // Add Sources
@@ -278,6 +295,8 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     });
 
     return () => {
+      cancelAnimationFrame(initialResize);
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
       setStyleReady(false);
@@ -336,6 +355,18 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       map.setLayoutProperty('risk-zones-line', 'visibility', layers.riskZones ? 'visible' : 'none');
     }
   }, [layers, styleReady]);
+
+  // The drawer takes ~370px out of this map's row, and MapLibre only watches
+  // the WINDOW - a container that changes size on its own leaves the canvas
+  // at its old width, rendering the map wider than the space it has. The
+  // ResizeObserver above covers layout changes generally; this covers the one
+  // that is driven by React state, without depending on when the browser
+  // chooses to deliver an observer callback.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.resize();
+  }, [isDrawerOpen, styleReady]);
 
   // Fly to selected incident or facility
   useEffect(() => {

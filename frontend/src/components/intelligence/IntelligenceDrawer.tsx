@@ -84,8 +84,18 @@ export const IntelligenceDrawer: React.FC = () => {
           <span className="text-sm font-bold text-[#3DB7D9]">{selectedIncident.brightnessK} K</span>
         </div>
         <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
-          <span className="text-[9px] text-[#A7B4C1] block uppercase">VIIRS CONFIDENCE</span>
-          <span className="text-sm font-bold text-[#39B978]">{selectedIncident.confidence}%</span>
+          {/* This is the CLASSIFIER's confidence in the source label, not
+              NASA's confidence in the detection. Labelling it "VIIRS" put a
+              model output under a satellite's name; both are shown now. */}
+          <span className="text-[9px] text-[#A7B4C1] block uppercase">Class confidence</span>
+          <span className="text-sm font-bold text-[#39B978]">
+            {selectedIncident.confidence}%
+            {selectedIncident.detectionConfidence !== undefined && (
+              <span className="text-[9px] font-normal text-[#A7B4C1]">
+                {' '}· NASA {selectedIncident.detectionConfidence}%
+              </span>
+            )}
+          </span>
         </div>
         <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
           <span className="text-[9px] text-[#A7B4C1] block uppercase">FACILITY DISTANCE</span>
