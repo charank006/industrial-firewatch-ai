@@ -34,6 +34,8 @@ from app.models.models import (
     FireEvent,
     FirePrediction,
     ImpactAssessment,
+    WeatherAnomalyRecord,
+    WeatherObservation,
 )
 from app.services.classifier.scorer import CLASS_LABEL
 
@@ -540,4 +542,147 @@ async def get_impact(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[s
         "risk_zones": impact.risk_zones,
         "notes": impact.notes,
         "created_at": impact.created_at.isoformat(),
+    }
+
+
+@router.get("/api/fires/{fire_id}/weather")
+async def get_weather(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """Current conditions and the six-day same-local-hour baseline (spec 8-10)."""
+    anomaly = (
+        await db.execute(
+            select(WeatherAnomalyRecord)
+            .where(WeatherAnomalyRecord.fire_event_id == fire_id)
+            .order_by(WeatherAnomalyRecord.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if anomaly is None:
+        raise HTTPException(status_code=404, detail="No weather analysis yet")
+
+    observation = (
+        await db.execute(
+            select(WeatherObservation)
+            .where(WeatherObservation.fire_event_id == fire_id)
+            .order_by(WeatherObservation.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    return {
+        "fire_event_id": fire_id,
+        "local_hour": observation.local_hour if observation else None,
+        "timezone": observation.timezone if observation else None,
+        "current": {
+            "temperature_c": anomaly.current_temperature_c,
+            "humidity_pct": anomaly.current_humidity_pct,
+            "wind_speed_ms": observation.wind_speed_ms if observation else None,
+            "wind_direction_deg": observation.wind_direction_deg if observation else None,
+            "precipitation_mm": observation.precipitation_mm if observation else None,
+            "vpd_kpa": anomaly.vpd_kpa,
+        },
+        "baseline": {
+            "temperature_c": anomaly.baseline_temperature_c,
+            "humidity_pct": anomaly.baseline_humidity_pct,
+            "temperature_stdev_c": anomaly.temperature_stdev_c,
+            "samples": anomaly.baseline_samples,
+            "days_requested": 6,
+            "quality": anomaly.baseline_quality,
+        },
+        "anomaly": {
+            "temperature_c": anomaly.temperature_anomaly_c,
+            "temperature_z": anomaly.temperature_anomaly_z,
+            "temperature_trend_c_per_day": anomaly.temperature_trend_c_per_day,
+            "humidity_pct": anomaly.humidity_anomaly_pct,
+            "wind_change_ms": anomaly.wind_change_ms,
+            "vpd_kpa": anomaly.vpd_anomaly_kpa,
+        },
+        "precipitation": {
+            "last_24h_mm": anomaly.precipitation_24h_mm,
+            "last_72h_mm": anomaly.precipitation_72h_mm,
+            "dry_hours": anomaly.dry_hours,
+        },
+        # Spec Rule 2 - stated wherever this data is surfaced.
+        "interpretation": (
+            "Weather anomalies are supporting evidence of unusual local conditions. "
+            "They are not proof of a fire, nor evidence about its source."
+        ),
+    }
+
+
+@router.get("/api/fires/{fire_id}/surroundings")
+async def get_surroundings(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """The 1 km OpenStreetMap context (spec 13, 14)."""
+    prediction = (
+        await db.execute(
+            select(FirePrediction)
+            .where(FirePrediction.fire_event_id == fire_id)
+            .order_by(FirePrediction.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if prediction is None or not prediction.feature_snapshot:
+        raise HTTPException(status_code=404, detail="No surroundings analysis yet")
+
+    snapshot = prediction.feature_snapshot
+    keys = (
+        "industrial_area_km2", "forest_area_km2", "farmland_area_km2",
+        "residential_area_km2", "water_area_km2", "industrial_fraction",
+        "forest_fraction", "farmland_fraction", "residential_fraction",
+        "factories_within_1km", "gas_facilities_within_1km", "power_infra_within_1km",
+        "building_count", "hospitals", "schools", "fire_stations", "road_length_km",
+        "nearest_factory_m", "nearest_gas_facility_m", "nearest_residential_m",
+        "nearest_forest_m", "nearest_farmland_m", "inside_industrial", "inside_forest",
+        "inside_farmland", "inside_residential", "land_cover", "osm_coverage",
+        "osm_element_count",
+    )
+    return {
+        "fire_event_id": fire_id,
+        "radius_m": int(float(snapshot.get("radius_km", 1.0)) * 1000),
+        **{k: snapshot.get(k) for k in keys},
+        # Spec Rule 4 - absent OSM data is not evidence of absence.
+        "coverage_caveat": (
+            "OpenStreetMap completeness varies by region. Sparse coverage means features may "
+            "exist that are not mapped; these counts are a lower bound."
+        ),
+    }
+
+
+@router.get("/api/fires/{fire_id}/analysis")
+async def get_analysis(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """Everything about one fire, in one round trip.
+
+    This is what the intelligence drawer calls, so selecting an incident costs
+    one request rather than five.
+    """
+    event = (
+        await db.execute(
+            select(FireEvent)
+            .options(selectinload(FireEvent.nearest_facility))
+            .where(FireEvent.id == fire_id)
+        )
+    ).scalar_one_or_none()
+    if event is None:
+        raise HTTPException(status_code=404, detail="Fire event not found")
+
+    predictions = await latest_predictions(db, [fire_id])
+    summary = serialise_event(
+        event,
+        recurrence=await recurrence_count(db, event),
+        history_days=await history_window_days(db),
+        facility=event.nearest_facility,
+        prediction=predictions.get(fire_id),
+    )
+
+    async def optional(coro):
+        try:
+            return await coro
+        except HTTPException:
+            return None
+
+    return {
+        "fire": summary,
+        "weather": await optional(get_weather(fire_id, db)),
+        "surroundings": await optional(get_surroundings(fire_id, db)),
+        "prediction": await optional(get_prediction(fire_id, db)),
+        "impact": await optional(get_impact(fire_id, db)),
     }

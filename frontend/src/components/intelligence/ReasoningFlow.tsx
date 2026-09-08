@@ -55,7 +55,7 @@ export const ReasoningFlow: React.FC<ReasoningFlowProps> = ({ steps, classificat
       </div>
 
       <div className="p-2 bg-[#0D151E] border border-[#253340] rounded text-center">
-        <span className="text-[10px] text-[#A7B4C1] uppercase tracking-wider block">DETERMINISTIC VERDICT</span>
+        <span className="text-[10px] text-[#A7B4C1] uppercase tracking-wider block">MOST PROBABLE SOURCE</span>
         <span className="text-xs font-semibold text-white block">{classification}</span>
       </div>
     </div>

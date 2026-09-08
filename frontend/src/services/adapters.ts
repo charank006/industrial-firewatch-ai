@@ -13,16 +13,22 @@
  * needing a join, a threshold or a model output is a backend field.
  */
 
-import type { ApiFacility, ApiFireEvent, ApiReasoningStep } from './api';
+import type { ApiAnalysis, ApiFacility, ApiFireEvent, ApiReasoningStep } from './api';
 import type {
   EventClassification,
   FacilityStatus,
   FacilityType,
+  FireAnalysis,
+  FireClassId,
+  ImpactDetail,
   IndustrialFacility,
   LandCoverCategory,
+  PredictionDetail,
   ReasoningStep,
   SeverityLevel,
+  SurroundingsDetail,
   ThermalHotspot,
+  WeatherDetail,
 } from '../types';
 
 /**
@@ -148,4 +154,112 @@ export const REGION_BBOX: Record<string, string> = {
 
 export function regionToBbox(region: string): string | undefined {
   return REGION_BBOX[region];
+}
+
+// --- Detail adapters (Phase 5/6) -----------------------------------------
+// Same hard rule: renaming and trivial formatting only.
+
+function num(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+export function adaptWeather(raw: Record<string, any> | null): WeatherDetail | null {
+  if (!raw) return null;
+  const { current = {}, baseline = {}, anomaly = {}, precipitation = {} } = raw;
+  return {
+    localHour: raw.local_hour ?? null,
+    timezone: raw.timezone ?? null,
+    currentTemperatureC: num(current.temperature_c),
+    currentHumidityPct: num(current.humidity_pct),
+    windSpeedMs: num(current.wind_speed_ms),
+    windDirectionDeg: num(current.wind_direction_deg),
+    vpdKpa: num(current.vpd_kpa),
+    baselineTemperatureC: num(baseline.temperature_c),
+    baselineHumidityPct: num(baseline.humidity_pct),
+    baselineSamples: baseline.samples ?? 0,
+    baselineDaysRequested: baseline.days_requested ?? 6,
+    baselineQuality: baseline.quality ?? 'insufficient',
+    temperatureAnomalyC: num(anomaly.temperature_c),
+    temperatureAnomalyZ: num(anomaly.temperature_z),
+    temperatureTrendCPerDay: num(anomaly.temperature_trend_c_per_day),
+    humidityAnomalyPct: num(anomaly.humidity_pct),
+    windChangeMs: num(anomaly.wind_change_ms),
+    vpdAnomalyKpa: num(anomaly.vpd_kpa),
+    precipitation24hMm: num(precipitation.last_24h_mm),
+    precipitation72hMm: num(precipitation.last_72h_mm),
+    dryHours: num(precipitation.dry_hours),
+    interpretation: raw.interpretation ?? '',
+  };
+}
+
+export function adaptSurroundings(raw: Record<string, any> | null): SurroundingsDetail | null {
+  if (!raw) return null;
+  return {
+    radiusM: raw.radius_m ?? 1000,
+    industrialAreaKm2: num(raw.industrial_area_km2),
+    forestAreaKm2: num(raw.forest_area_km2),
+    farmlandAreaKm2: num(raw.farmland_area_km2),
+    residentialAreaKm2: num(raw.residential_area_km2),
+    waterAreaKm2: num(raw.water_area_km2),
+    factoriesWithin1km: num(raw.factories_within_1km),
+    gasFacilitiesWithin1km: num(raw.gas_facilities_within_1km),
+    powerInfraWithin1km: num(raw.power_infra_within_1km),
+    buildingCount: num(raw.building_count),
+    hospitals: num(raw.hospitals),
+    schools: num(raw.schools),
+    fireStations: num(raw.fire_stations),
+    roadLengthKm: num(raw.road_length_km),
+    nearestFactoryM: num(raw.nearest_factory_m),
+    nearestGasFacilityM: num(raw.nearest_gas_facility_m),
+    nearestResidentialM: num(raw.nearest_residential_m),
+    insideIndustrial: Boolean(raw.inside_industrial),
+    landCover: raw.land_cover ?? null,
+    osmCoverage: raw.osm_coverage ?? null,
+    osmElementCount: num(raw.osm_element_count),
+    coverageCaveat: raw.coverage_caveat ?? '',
+  };
+}
+
+export function adaptPrediction(raw: Record<string, any> | null): PredictionDetail | null {
+  if (!raw) return null;
+  return {
+    prediction: (raw.prediction ?? 'unknown') as FireClassId,
+    label: raw.label ?? 'Unknown Anomaly',
+    confidencePct: raw.confidence_pct ?? 0,
+    probabilities: (raw.probabilities ?? {}) as Record<FireClassId, number>,
+    severity: raw.severity ?? 'MEDIUM',
+    modelVersion: raw.model_version ?? '',
+    modelKind: raw.model_kind ?? '',
+    dataQuality: raw.data_quality ?? 1,
+    reasoningSteps: (raw.reasoning_steps ?? []).map(adaptReasoningStep),
+    suggestedAction: raw.suggested_action ?? '',
+    interpretation: raw.interpretation ?? '',
+  };
+}
+
+export function adaptImpact(raw: Record<string, any> | null): ImpactDetail | null {
+  if (!raw) return null;
+  return {
+    riskLevel: raw.risk_level ?? 'MODERATE',
+    coreRadiusM: num(raw.core_radius_m),
+    downwindLengthM: num(raw.downwind_length_m),
+    windSpeedMs: num(raw.wind_speed_ms),
+    windDirectionDeg: num(raw.wind_direction_deg),
+    plumeBearingDeg: num(raw.plume_bearing_deg),
+    exposed: raw.exposed ?? {},
+    exposureCount: raw.exposure_count ?? 0,
+    potentialPollutants: raw.potential_pollutants ?? [],
+    pollutantCaveat: raw.pollutant_caveat ?? '',
+    riskZones: raw.risk_zones ?? null,
+    notes: raw.notes ?? [],
+  };
+}
+
+export function adaptAnalysis(raw: ApiAnalysis): FireAnalysis {
+  return {
+    weather: adaptWeather(raw.weather),
+    surroundings: adaptSurroundings(raw.surroundings),
+    prediction: adaptPrediction(raw.prediction),
+    impact: adaptImpact(raw.impact),
+  };
 }

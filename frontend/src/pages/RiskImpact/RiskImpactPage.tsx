@@ -8,11 +8,12 @@ import {
   Users,
 } from 'lucide-react';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
+import { ImpactPanel, SurroundingsPanel } from '../../components/intelligence/AnalysisPanels';
 import { useIntelligence } from '../../context/IntelligenceContext';
 
 export const RiskImpactPage: React.FC = () => {
   const navigate = useNavigate();
-  const { selectedIncident } = useIntelligence();
+  const { selectedIncident, analysis, dataSource } = useIntelligence();
   const [radiusMeters, setRadiusMeters] = useState<number>(1000);
 
   const incident = selectedIncident || {
@@ -55,7 +56,9 @@ export const RiskImpactPage: React.FC = () => {
             </h1>
           </div>
           <p className="text-xs text-[#A7B4C1] mt-1">
-            POSTGIS ST_DWITHIN SPATIAL QUERY & EMERGENCY CONTACT IDENTIFICATION
+            {dataSource === 'api'
+              ? 'POSTGIS ST_DWITHIN SPATIAL QUERY & WIND-AWARE PLUME MODELLING'
+              : 'DEMO DATA — POSTGIS SPATIAL QUERY ACTIVE IN LIVE MODE'}
           </p>
         </div>
 
@@ -73,6 +76,15 @@ export const RiskImpactPage: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {/* Pipeline impact assessment. Renders only when the selected event has
+          been analysed; the emergency-contact workspace below is unchanged. */}
+      {(analysis?.impact || analysis?.surroundings) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <ImpactPanel impact={analysis?.impact ?? null} />
+          <SurroundingsPanel surroundings={analysis?.surroundings ?? null} />
+        </div>
+      )}
 
       {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, Globe, Radar, Search } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { DATA_SOURCE } from '../../services/api';
 
 export const Header: React.FC = () => {
   const { filters, setFilters, alerts } = useIntelligence();
@@ -47,7 +48,7 @@ export const Header: React.FC = () => {
 
         <div className="flex items-center space-x-2 px-3 py-1 bg-[#0A121E] border border-[#1E2C3B] rounded-md">
           <span className="text-[10.5px] text-[#E8A93A] font-bold tracking-wider uppercase">
-            DEMO DATA &bull; VIIRS 375M
+            {DATA_SOURCE === 'api' ? 'LIVE NASA FIRMS \u2022 VIIRS / MODIS' : 'DEMO DATA \u2022 VIIRS 375M'}
           </span>
         </div>
       </div>

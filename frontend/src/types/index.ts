@@ -124,3 +124,104 @@ export interface SituationMetrics {
   eventMix: Record<EventClassification, number>;
   latestHotspot?: ThermalHotspot;
 }
+
+// --- Pipeline detail types (Phase 5/6) -----------------------------------
+// These describe data the backend pipeline produces. They are additive: no
+// existing type or component changes shape.
+
+export type FireClassId =
+  | 'industrial'
+  | 'flare'
+  | 'forest'
+  | 'agriculture'
+  | 'gas_oil'
+  | 'urban'
+  | 'unknown';
+
+export interface WeatherDetail {
+  localHour: string | null;
+  timezone: string | null;
+  currentTemperatureC: number | null;
+  currentHumidityPct: number | null;
+  windSpeedMs: number | null;
+  windDirectionDeg: number | null;
+  vpdKpa: number | null;
+  baselineTemperatureC: number | null;
+  baselineHumidityPct: number | null;
+  baselineSamples: number;
+  baselineDaysRequested: number;
+  /** 'ok' | 'partial' | 'insufficient' */
+  baselineQuality: string;
+  temperatureAnomalyC: number | null;
+  temperatureAnomalyZ: number | null;
+  temperatureTrendCPerDay: number | null;
+  humidityAnomalyPct: number | null;
+  windChangeMs: number | null;
+  vpdAnomalyKpa: number | null;
+  precipitation24hMm: number | null;
+  precipitation72hMm: number | null;
+  dryHours: number | null;
+  interpretation: string;
+}
+
+export interface SurroundingsDetail {
+  radiusM: number;
+  industrialAreaKm2: number | null;
+  forestAreaKm2: number | null;
+  farmlandAreaKm2: number | null;
+  residentialAreaKm2: number | null;
+  waterAreaKm2: number | null;
+  factoriesWithin1km: number | null;
+  gasFacilitiesWithin1km: number | null;
+  powerInfraWithin1km: number | null;
+  buildingCount: number | null;
+  hospitals: number | null;
+  schools: number | null;
+  fireStations: number | null;
+  roadLengthKm: number | null;
+  nearestFactoryM: number | null;
+  nearestGasFacilityM: number | null;
+  nearestResidentialM: number | null;
+  insideIndustrial: boolean;
+  landCover: string | null;
+  /** 'ok' | 'sparse' | 'unavailable' */
+  osmCoverage: string | null;
+  osmElementCount: number | null;
+  coverageCaveat: string;
+}
+
+export interface PredictionDetail {
+  prediction: FireClassId;
+  label: string;
+  confidencePct: number;
+  probabilities: Record<FireClassId, number>;
+  severity: SeverityLevel;
+  modelVersion: string;
+  modelKind: string;
+  dataQuality: number;
+  reasoningSteps: ReasoningStep[];
+  suggestedAction: string;
+  interpretation: string;
+}
+
+export interface ImpactDetail {
+  riskLevel: string;
+  coreRadiusM: number | null;
+  downwindLengthM: number | null;
+  windSpeedMs: number | null;
+  windDirectionDeg: number | null;
+  plumeBearingDeg: number | null;
+  exposed: Record<string, number>;
+  exposureCount: number;
+  potentialPollutants: string[];
+  pollutantCaveat: string;
+  riskZones: unknown;
+  notes: string[];
+}
+
+export interface FireAnalysis {
+  weather: WeatherDetail | null;
+  surroundings: SurroundingsDetail | null;
+  prediction: PredictionDetail | null;
+  impact: ImpactDetail | null;
+}

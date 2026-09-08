@@ -10,9 +10,15 @@ import {
 } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 import { ReasoningFlow } from './ReasoningFlow';
+import {
+  ImpactPanel,
+  ProbabilityPanel,
+  SurroundingsPanel,
+  WeatherPanel,
+} from './AnalysisPanels';
 
 export const IntelligenceDrawer: React.FC = () => {
-  const { selectedIncident, isDrawerOpen, setIsDrawerOpen, selectFacilityById } =
+  const { selectedIncident, isDrawerOpen, setIsDrawerOpen, selectFacilityById, analysis } =
     useIntelligence();
   const navigate = useNavigate();
 
@@ -118,6 +124,13 @@ export const IntelligenceDrawer: React.FC = () => {
         classification={selectedIncident.classification}
         confidence={selectedIncident.confidence}
       />
+
+      {/* Pipeline panels. Each renders null when its data is absent, so an
+          un-analysed fire simply shows fewer panels. */}
+      <ProbabilityPanel prediction={analysis?.prediction ?? null} />
+      <WeatherPanel weather={analysis?.weather ?? null} />
+      <SurroundingsPanel surroundings={analysis?.surroundings ?? null} />
+      <ImpactPanel impact={analysis?.impact ?? null} />
 
       {/* Recommended Action */}
       <div className="p-3 bg-[#F04438]/10 border border-[#F04438]/30 rounded-lg space-y-1 text-xs font-mono">

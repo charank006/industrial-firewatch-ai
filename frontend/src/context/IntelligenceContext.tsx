@@ -2,11 +2,18 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { MOCK_ALERTS } from '../data/mockAlerts';
 import { MOCK_FACILITIES } from '../data/mockFacilities';
 import { MOCK_HOTSPOTS } from '../data/mockHotspots';
-import { DATA_SOURCE, fetchFacilities, fetchFires } from '../services/api';
-import { adaptFacility, adaptFireEvent, dateRangeToSince, regionToBbox } from '../services/adapters';
+import { DATA_SOURCE, fetchFacilities, fetchFireAnalysis, fetchFires } from '../services/api';
+import {
+  adaptAnalysis,
+  adaptFacility,
+  adaptFireEvent,
+  dateRangeToSince,
+  regionToBbox,
+} from '../services/adapters';
 import type {
   AlertItem,
   EventClassification,
+  FireAnalysis,
   FilterState,
   GISLayerVisibility,
   IndustrialFacility,
@@ -43,6 +50,10 @@ interface IntelligenceContextType {
   error: string | null;
   historyDays: number | null;
   refresh: () => void;
+
+  /** Weather, surroundings, prediction and impact for `selectedIncident`. */
+  analysis: FireAnalysis | null;
+  isAnalysisLoading: boolean;
 
   // Actions
   setSelectedIncident: (incident: ThermalHotspot | null) => void;
@@ -93,6 +104,8 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [error, setError] = useState<string | null>(null);
   const [historyDays, setHistoryDays] = useState<number | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [analysis, setAnalysis] = useState<FireAnalysis | null>(null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
 
   const [selectedIncident, setSelectedIncident] = useState<ThermalHotspot | null>(
     isApi ? null : MOCK_HOTSPOTS[0],
@@ -150,6 +163,37 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
       cancelled = true;
     };
   }, [isApi, region, dateRange, reloadToken]);
+
+  // One round trip per selected incident: /api/fires/{id}/analysis returns
+  // weather, surroundings, prediction and impact together.
+  const selectedIncidentId = selectedIncident?.id ?? null;
+
+  useEffect(() => {
+    if (!isApi || !selectedIncidentId) {
+      setAnalysis(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsAnalysisLoading(true);
+
+    fetchFireAnalysis(selectedIncidentId)
+      .then((payload) => {
+        if (!cancelled) setAnalysis(adaptAnalysis(payload));
+      })
+      .catch(() => {
+        // A missing analysis is an expected state (the event may not have been
+        // enriched yet), so the panels simply do not render.
+        if (!cancelled) setAnalysis(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsAnalysisLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isApi, selectedIncidentId]);
 
   // Dynamic Filtering Logic
   const filteredHotspots = useMemo(() => {
@@ -266,6 +310,8 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
         error,
         historyDays,
         refresh,
+        analysis,
+        isAnalysisLoading,
         setSelectedIncident,
         setSelectedFacility,
         selectIncidentById,

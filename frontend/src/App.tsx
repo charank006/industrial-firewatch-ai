@@ -17,6 +17,7 @@ import { MissionBriefPage } from './pages/MissionBrief/MissionBriefPage';
 import { RiskImpactPage } from './pages/RiskImpact/RiskImpactPage';
 import { SystemStatusPage } from './pages/SystemStatus/SystemStatusPage';
 import { ThermalHistoryPage } from './pages/ThermalHistory/ThermalHistoryPage';
+import { WeatherAnalysisPage } from './pages/WeatherAnalysis/WeatherAnalysisPage';
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -36,6 +37,7 @@ const AppContent: React.FC = () => {
           <Route path="/incidents" element={<IncidentsPage />} />
           <Route path="/map-explorer" element={<MapExplorerPage />} />
           <Route path="/thermal-history" element={<ThermalHistoryPage />} />
+          <Route path="/weather-analysis" element={<WeatherAnalysisPage />} />
           <Route path="/facility-watch" element={<FacilityWatchPage />} />
           <Route path="/risk-impact" element={<RiskImpactPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />

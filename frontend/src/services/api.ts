@@ -10,15 +10,17 @@ export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '';
 /**
  * Which data source the app runs on.
  *
- * Defaults to `mock`. The backend cannot yet supply classification, land
- * cover or location names (Phase 4/5), so switching the default before those
- * land would show "Unknown Anomaly, no reasoning steps" on every card - a
- * visible regression even though no component changed.
+ * Defaults to `api` as of Phase 6: the backend now supplies classification,
+ * land cover, location names, weather baselines, surroundings and impact, so
+ * live data is strictly richer than the bundled mocks.
+ *
+ * Set VITE_DATA_SOURCE=mock to run the dashboard with no backend at all -
+ * useful for UI work, demos, and as an offline fallback.
  */
 export type DataSource = 'mock' | 'api';
 
 export const DATA_SOURCE: DataSource =
-  (import.meta.env.VITE_DATA_SOURCE as DataSource) === 'api' ? 'api' : 'mock';
+  (import.meta.env.VITE_DATA_SOURCE as DataSource) === 'mock' ? 'mock' : 'api';
 
 export class ApiError extends Error {
   status?: number;
@@ -144,4 +146,39 @@ export function fetchFacilities() {
 
 export function fetchSystemStatus() {
   return request<Record<string, unknown>>('/api/system/status');
+}
+
+// --- Detail endpoints (Phase 5/6) ----------------------------------------
+
+export interface ApiAnalysis {
+  fire: ApiFireEvent;
+  weather: Record<string, any> | null;
+  surroundings: Record<string, any> | null;
+  prediction: Record<string, any> | null;
+  impact: Record<string, any> | null;
+}
+
+/** Everything about one fire in a single round trip. */
+export function fetchFireAnalysis(fireId: string) {
+  return request<ApiAnalysis>(`/api/fires/${encodeURIComponent(fireId)}/analysis`);
+}
+
+export function fetchFireDetections(fireId: string) {
+  return request<{
+    fire_event_id: string;
+    count: number;
+    detections: Array<{
+      acquisition_time: string;
+      time_formatted: string | null;
+      frp_mw: number;
+      brightness_k: number | null;
+      confidence_pct: number | null;
+      satellite: string;
+      instrument: string;
+    }>;
+  }>(`/api/fires/${encodeURIComponent(fireId)}/detections`);
+}
+
+export function fetchDashboardSummary() {
+  return request<Record<string, any>>('/api/dashboard/summary');
 }

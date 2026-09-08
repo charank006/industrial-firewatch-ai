@@ -1,18 +1,14 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import {
-  Globe2,
-  LayoutDashboard,
-  Flame,
-  Factory,
-  Cpu,
-} from 'lucide-react';
+import { CloudDrizzle, Cpu, Factory, Flame, Globe2, LayoutDashboard, Wind } from 'lucide-react';
 
 const CORE_WORKSTATIONS = [
   { path: '/', label: 'Global Earth', icon: Globe2, badge: '3D WebGL' },
   { path: '/command-center', label: 'Operations Room', icon: LayoutDashboard, badge: 'LIVE' },
   { path: '/incidents', label: 'Incidents Registry', icon: Flame, badge: 'ACTIVE' },
   { path: '/facility-watch', label: 'Facility Monitor', icon: Factory, badge: 'ASSETS' },
+  { path: '/weather-analysis', label: 'Weather Baseline', icon: CloudDrizzle, badge: '6-DAY' },
+  { path: '/risk-impact', label: 'Risk & Impact', icon: Wind, badge: 'PLUME' },
   { path: '/system-status', label: 'System Status & Methodology', icon: Cpu, badge: 'READY' },
 ];
 
