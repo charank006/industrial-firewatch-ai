@@ -1,0 +1,30 @@
+# Spatial database for the fire-intelligence pipeline.
+#
+#   docker compose up -d
+#   cd backend && alembic upgrade head
+#
+# If you'd rather not use Docker, Homebrew works too:
+#   brew install postgis && brew services start postgresql@17
+#   createdb firewatch_db && psql firewatch_db -c 'CREATE EXTENSION postgis;'
+# Either way DATABASE_URL in backend/.env points at the result.
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: firewatch-postgis
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: firewatch_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - firewatch_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d firewatch_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  firewatch_pgdata:

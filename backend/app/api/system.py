@@ -6,6 +6,7 @@ Every field here is now the result of an actual check, so SystemStatusPage
 tells the truth about what is and isn't connected.
 """
 
+import asyncio
 import datetime
 import time
 from typing import Any, Dict
@@ -13,6 +14,7 @@ from typing import Any, Dict
 from fastapi import APIRouter
 
 from app.config import settings
+from app.database.connection import probe_postgis, probe_postgres
 
 router = APIRouter(tags=["system"])
 
@@ -59,9 +61,12 @@ async def get_system_status():
     Until then a subsystem reports ok=False with an honest "not wired yet"
     detail rather than a reassuring literal.
     """
+    checked_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    pg, gis = await asyncio.gather(probe_postgres(), probe_postgis())
+
     probes: Dict[str, Dict[str, Any]] = {
-        "postgres": _probe_result(False, "Not wired yet (Phase 0b)"),
-        "postgis": _probe_result(False, "Not wired yet (Phase 0b)"),
+        "postgres": {**pg, "checked_at": checked_at},
+        "postgis": {**gis, "checked_at": checked_at},
         "firms": _probe_result(
             False,
             "MAP_KEY not configured" if not settings.NASA_FIRMS_MAP_KEY else "Not wired yet (Phase 1)",
