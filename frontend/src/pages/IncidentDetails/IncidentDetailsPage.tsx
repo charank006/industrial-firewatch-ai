@@ -24,14 +24,26 @@ const HISTORICAL_FRP_DATA = [
 export const IncidentDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { hotspots, selectFacilityById } = useIntelligence();
+  const { hotspots, selectFacilityById, isLoading } = useIntelligence();
 
+  // `hotspots[0]` is undefined on the first render in api mode, and every
+  // `incident.<field>` below then threw - blanking the whole app, not just
+  // this page.
   const incident = hotspots.find((h) => h.id === id) || hotspots[0];
 
   const handleFacilityClick = () => {
+    if (!incident?.nearestFacilityId) return;
     selectFacilityById(incident.nearestFacilityId);
     navigate(`/facility-watch?facilityId=${incident.nearestFacilityId}`);
   };
+
+  if (!incident) {
+    return (
+      <div className="min-h-screen bg-[#050A12] p-6 font-mono text-xs text-[#A7B4C5]">
+        {isLoading ? 'Loading detections…' : `No detection ${id ?? ''} in the current view.`}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#050A12] p-4 sm:p-6 space-y-6 font-sans text-[#F5F7FA]">

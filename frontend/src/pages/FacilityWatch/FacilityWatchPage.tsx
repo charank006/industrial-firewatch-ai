@@ -5,7 +5,8 @@ import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
 
 export const FacilityWatchPage: React.FC = () => {
-  const { facilities, selectedFacility, setSelectedFacility, selectFacilityById } = useIntelligence();
+  const { facilities, selectedFacility, setSelectedFacility, selectFacilityById, isLoading } =
+    useIntelligence();
   const [searchParams] = useSearchParams();
   const facilityParamId = searchParams.get('facilityId');
 
@@ -15,7 +16,18 @@ export const FacilityWatchPage: React.FC = () => {
     }
   }, [facilityParamId, selectFacilityById]);
 
+  // In api mode the first render happens before the registry has loaded, so
+  // `facilities[0]` is undefined and every `activeFac.<field>` below threw -
+  // taking the whole app tree down to a blank page, not just this panel.
   const activeFac = selectedFacility || facilities[0];
+
+  if (!activeFac) {
+    return (
+      <div className="min-h-screen bg-[#050A12] p-6 font-mono text-xs text-[#A7B4C5]">
+        {isLoading ? 'Loading facility registry…' : 'No facilities in the registry.'}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#050A12] p-4 sm:p-6 space-y-6 font-sans text-[#F5F7FA]">
@@ -34,7 +46,7 @@ export const FacilityWatchPage: React.FC = () => {
         </div>
 
         <div className="text-xs font-mono text-[#16A9D9] bg-[#07101B] px-3 py-1.5 border border-[#203246] rounded">
-          MONITORING {facilities.length} ASSETS IN GUJARAT
+          MONITORING {facilities.length} REGISTRY ASSETS
         </div>
       </div>
 

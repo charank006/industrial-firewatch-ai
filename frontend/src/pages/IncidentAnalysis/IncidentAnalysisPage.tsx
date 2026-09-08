@@ -17,7 +17,7 @@ import { facilityDistance } from '../../components/intelligence/formatters';
 export const IncidentAnalysisPage: React.FC = () => {
   const { incidentId } = useParams<{ incidentId: string }>();
   const navigate = useNavigate();
-  const { hotspots, selectFacilityById, analysis } = useIntelligence();
+  const { hotspots, selectFacilityById, analysis, isLoading } = useIntelligence();
 
   /**
    * Nearest mapped facility of a kind, from the OSM enrichment. The page used
@@ -35,13 +35,22 @@ export const IncidentAnalysisPage: React.FC = () => {
   const [customRadius, setCustomRadius] = useState<number>(1000);
 
   const handleFacilityClick = () => {
+    if (!incident?.nearestFacilityId) return;
     selectFacilityById(incident.nearestFacilityId);
     navigate(`/facility-watch?facilityId=${incident.nearestFacilityId}`);
   };
 
   const handleAuthorizeAlertClick = () => {
-    navigate(`/alerts?incidentId=${incident.id}&radius=${customRadius}`);
+    if (incident) navigate(`/alerts?incidentId=${incident.id}&radius=${customRadius}`);
   };
+
+  if (!incident) {
+    return (
+      <div className="min-h-screen bg-[#05080D] p-6 font-mono text-xs text-[#A7B4C1]">
+        {isLoading ? 'Loading detections…' : `No detection ${incidentId ?? ''} in the current view.`}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#05080D] p-4 space-y-4 font-sans text-[#F1F4F6]">

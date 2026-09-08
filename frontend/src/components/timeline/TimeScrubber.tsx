@@ -34,7 +34,9 @@ export const TimeScrubber: React.FC = () => {
         <button
           onClick={() => {
             setTimelineIndex(0);
-            selectIncidentById(hotspots[0].id);
+            // Empty is reachable: a filter that matches nothing, or the first
+            // render before the API responds.
+            if (hotspots.length > 0) selectIncidentById(hotspots[0].id);
           }}
           className="p-1 rounded bg-[#111A26] border border-[#243244] hover:text-[#2FA8D8] transition"
           title="Reset Timeline"
@@ -103,7 +105,7 @@ export const TimeScrubber: React.FC = () => {
           className="w-full h-1 bg-[#111A26] rounded-lg appearance-none cursor-pointer accent-[#2FA8D8]"
         />
         <span className="text-[10px] text-[#2FA8D8] font-semibold whitespace-nowrap">
-          {currentHotspot?.timeFormatted || '21:42 IST'}
+          {currentHotspot?.timeFormatted || '—'}
         </span>
       </div>
 
