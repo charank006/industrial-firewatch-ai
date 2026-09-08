@@ -5,6 +5,8 @@ export type EventClassification =
   | 'Routine Flare'
   | 'Forest Fire'
   | 'Agricultural Burning'
+  | 'Gas/Oil'
+  | 'Urban'
   | 'Unknown Anomaly';
 
 export type FacilityType =
@@ -17,7 +19,15 @@ export type FacilityType =
 
 export type FacilityStatus = 'NORMAL' | 'ELEVATED' | 'ANOMALY_DETECTED';
 
-export type LandCoverCategory = 'Built-up Industrial' | 'Dense Forest' | 'Cropland' | 'Water Body' | 'Scrubland';
+export type LandCoverCategory =
+  | 'Built-up Industrial'
+  | 'Dense Forest'
+  | 'Cropland'
+  | 'Water Body'
+  | 'Scrubland'
+  // Emitted when no OSM land-use class covers >20% of the 1km disc.
+  // Guessing a real category here would print a lie on the dashboard.
+  | 'Unclassified';
 
 export interface ReasoningStep {
   stepIndex: number;
@@ -32,7 +42,10 @@ export interface ThermalHotspot {
   lng: number;
   frpMw: number;
   brightnessK: number;
+  /** Classification confidence 0-100 (how sure the engine is of the class). */
   confidence: number;
+  /** NASA FIRMS detection confidence 0-100. Normalised from VIIRS l|n|h or MODIS 0-100. */
+  detectionConfidence?: number;
   timestamp: string;
   timeFormatted: string;
   dayNight: 'D' | 'N';

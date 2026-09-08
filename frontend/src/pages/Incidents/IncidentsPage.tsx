@@ -76,6 +76,8 @@ export const IncidentsPage: React.FC = () => {
             <option value="Routine Flare">Routine Flare</option>
             <option value="Forest Fire">Forest Fire</option>
             <option value="Agricultural Burning">Agricultural Burning</option>
+            <option value="Gas/Oil">Gas/Oil</option>
+            <option value="Urban">Urban</option>
             <option value="Unknown Anomaly">Unknown Anomaly</option>
           </select>
 
@@ -85,6 +87,7 @@ export const IncidentsPage: React.FC = () => {
             className="px-3 py-1 bg-[#0B111A] border border-[#243244] text-slate-200 rounded focus:outline-none focus:border-[#2FA8D8]"
           >
             <option value="ALL">All Severities</option>
+            <option value="CRITICAL">Critical Priority</option>
             <option value="HIGH">High Priority</option>
             <option value="MEDIUM">Medium Priority</option>
             <option value="LOW">Low Priority</option>

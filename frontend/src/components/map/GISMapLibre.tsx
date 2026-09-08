@@ -176,6 +176,8 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             'Routine Flare', '#FF6B22',
             'Forest Fire', '#FF6B22',
             'Agricultural Burning', '#FFB020',
+            'Gas/Oil', '#A855F7',
+            'Urban', '#EC4899',
             '#66768A',
           ],
           'circle-radius': [

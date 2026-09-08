@@ -56,7 +56,9 @@ def dispatch_incident_alert_sequence(
 ) -> List[Dict[str, Any]]:
   """Orchestrates prioritized notification dispatch & generates initial recipient records."""
   results = []
-  now_str = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S IST")
+  # Was `utcnow().strftime("... IST")` - a UTC instant labelled IST, and
+  # utcnow() is deprecated in 3.12. ISO-8601 UTC with an explicit Z instead.
+  now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
   for idx, r in enumerate(recipients):
     channel = channels[idx % len(channels)]

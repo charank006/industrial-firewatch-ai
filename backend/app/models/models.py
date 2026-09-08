@@ -16,7 +16,7 @@ class User(Base):
     notification_opt_in = Column(Boolean, default=True)
     push_token = Column(String, nullable=True)
     status = Column(String, default="ACTIVE")
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 class Incident(Base):
     __tablename__ = "incidents"
@@ -35,7 +35,7 @@ class Incident(Base):
     custom_radius_meters = Column(Float, default=1000.0)
     location_name = Column(String, nullable=False)
     suggested_action = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 class Facility(Base):
     __tablename__ = "facilities"
@@ -71,7 +71,7 @@ class NotificationEvent(Base):
     incident_id = Column(String, ForeignKey("incidents.id"), nullable=False)
     channels = Column(String, nullable=False) # FCM, SMS, EMAIL
     status = Column(String, default="AUTHORIZED")
-    authorized_at = Column(DateTime, default=datetime.datetime.utcnow)
+    authorized_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
 class NotificationRecipient(Base):
     __tablename__ = "notification_recipients"

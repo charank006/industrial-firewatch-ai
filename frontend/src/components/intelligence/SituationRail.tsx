@@ -11,6 +11,8 @@ export const SituationRail: React.FC = () => {
     'Routine Flare',
     'Forest Fire',
     'Agricultural Burning',
+    'Gas/Oil',
+    'Urban',
     'Unknown Anomaly',
   ];
 
