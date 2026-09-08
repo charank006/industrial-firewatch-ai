@@ -28,7 +28,7 @@ export const Header: React.FC = () => {
         </div>
         <div className="flex items-center space-x-2">
           <span className="font-bold text-sm tracking-tight text-white uppercase font-mono">
-            INDUSTRIAL FIREWATCH <span className="text-[#3DB7D9]">AI</span>
+            GEOFLARE <span className="text-[#3DB7D9]">AI</span>
           </span>
           <span className="text-[9.5px] text-[#A7B4C1] px-2 py-0.5 bg-[#0A121E] border border-[#1E2C3B] rounded font-mono font-semibold tracking-wider">
             EARTH OBSERVATION WORKSTATION

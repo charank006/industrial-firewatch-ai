@@ -1,363 +1,739 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Globe from 'globe.gl';
-import { X, ShieldAlert, BookOpen, ArrowRight } from 'lucide-react';
-import { HISTORICAL_EVENTS } from '../../data/historicalEvents';
-import type { HistoricalEvent } from '../../types/historicalEvents';
-import { getEarthNightTexture } from '../../utils/earthTexture';
+import { 
+  Globe2, 
+  Flame, 
+  ShieldAlert, 
+  Radar, 
+  Building2, 
+  Activity, 
+  CheckCircle2, 
+  Radio, 
+  Layers, 
+  Compass, 
+  ExternalLink, 
+  Zap, 
+  Filter, 
+  Clock, 
+  Crosshair, 
+  AlertTriangle, 
+  ChevronRight,
+  Sparkles,
+  Search,
+  X
+} from 'lucide-react';
 
-export const LandingPage: React.FC = () => {
+import { getEarthNightTexture } from '../../utils/earthTexture';
+import { HISTORICAL_EVENTS } from '../../data/historicalEvents';
+import { LANDING_SIGNALS, type LandingSignal } from '../../data/landingSignals';
+import { MOCK_FACILITIES } from '../../data/mockFacilities';
+
+export default function GeoFlareLanding() {
   const navigate = useNavigate();
   const globeElRef = useRef<HTMLDivElement>(null);
   const globeInstanceRef = useRef<any>(null);
 
-  // Selected Incident State & Ref to prevent useEffect re-triggering
-  const [selectedIncident, setSelectedIncident] = useState<HistoricalEvent | null>(null);
-  const selectedIncidentRef = useRef<HistoricalEvent | null>(null);
-  selectedIncidentRef.current = selectedIncident;
+  // States
+  const [selectedSignal, setSelectedSignal] = useState<LandingSignal>(LANDING_SIGNALS[0]);
+  const [activeFilter, setActiveFilter] = useState<'ALL' | 'CRITICAL' | 'ROUTINE' | 'NEW'>('ALL');
+  const [inspectedIncident, setInspectedIncident] = useState<LandingSignal | null>(null);
+  const [utcTime, setUtcTime] = useState<string>('');
+  const [isGlobeRotating, setIsGlobeRotating] = useState<boolean>(true);
 
-  // Track marker DOM element refs for visual state updates without globe re-renders
-  const markerElementsRef = useRef<Map<string, { core: HTMLDivElement; halo: HTMLDivElement }>>(new Map());
-
-  // Telemetry Clock
-  const [timeStr, setTimeStr] = useState<string>('');
-
+  // Live UTC Clock
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const year = now.getFullYear();
-      let hours = now.getHours();
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12 || 12;
-      const formattedHours = String(hours).padStart(2, '0');
-
-      setTimeStr(`${month}/${day}/${year} ${formattedHours}:${minutes}:${seconds} ${ampm}`);
+      setUtcTime(now.toISOString().replace('T', ' // ').substring(0, 22) + ' UTC');
     };
     updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  // Initialize Globe.GL Earth ONCE on mount
+  // Initialize 3D WebGL Globe with Three.js / globe.gl
   useEffect(() => {
     if (!globeElRef.current) return;
 
-    const width = globeElRef.current.clientWidth || window.innerWidth;
-    const height = globeElRef.current.clientHeight || window.innerHeight;
-
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const nasaSatTexture = 'https://unpkg.com/three-globe/example/img/earth-night.jpg';
     const fallbackTexture = getEarthNightTexture();
 
-    const world = (Globe as any)()(globeElRef.current)
-      .width(width)
-      .height(height)
-      .globeImageUrl(nasaSatTexture)
-      .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
-      .backgroundColor('#000000')
-      .atmosphereColor('#0088ff')
-      .atmosphereAltitude(0.24)
-      .htmlElementsData(HISTORICAL_EVENTS)
-      .htmlElement((d: HistoricalEvent) => {
-        const container = document.createElement('div');
-        container.className = 'relative flex items-center justify-center cursor-pointer';
-        container.style.transform = 'translate(-50%, -50%)';
-        container.style.pointerEvents = 'auto';
-        container.style.zIndex = '100';
+    // Map historical events and active landing signals to globe HTML elements
+    const globePoints = [
+      ...HISTORICAL_EVENTS.slice(0, 12).map((ev) => ({
+        lat: ev.latitude,
+        lng: ev.longitude,
+        name: ev.title,
+        color: ev.severity === 'CRITICAL' ? '#EF4444' : '#F97316',
+        frp: `${ev.frpMw} MW`,
+        type: 'HISTORICAL'
+      })),
+      ...LANDING_SIGNALS.map((sig) => ({
+        lat: sig.lat,
+        lng: sig.lng,
+        name: sig.locationName,
+        color: sig.severity === 'CRITICAL' ? '#EF4444' : sig.severity === 'HIGH' ? '#F97316' : '#38BDF8',
+        frp: `${sig.frpMw} MW`,
+        type: 'ACTIVE'
+      }))
+    ];
 
-        // Outer Glow / Breathing Animation Layer
-        const halo = document.createElement('div');
-        halo.style.position = 'absolute';
-        halo.style.borderRadius = '50%';
-        halo.className = 'animate-historical-breath';
-        halo.style.width = '20px';
-        halo.style.height = '20px';
-        halo.style.backgroundColor = 'rgba(245, 158, 11, 0.25)';
+    try {
+      const container = globeElRef.current;
+      const width = container.clientWidth || window.innerWidth;
+      const height = container.clientHeight || 540;
 
-        // Inner Marker Core
-        const core = document.createElement('div');
-        core.style.borderRadius = '50%';
-        core.style.transition = 'all 0.2s ease';
-        core.style.width = '9px';
-        core.style.height = '9px';
-        core.style.backgroundColor = '#F59E0B';
-        core.style.boxShadow = '0 0 6px rgba(245, 158, 11, 0.6)';
+      const world = (Globe as any)()(container)
+        .width(width)
+        .height(height)
+        .globeImageUrl(nasaSatTexture)
+        .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+        .backgroundColor('rgba(0,0,0,0)')
+        .atmosphereColor('#38bdf8')
+        .atmosphereAltitude(0.22)
+        .htmlElementsData(globePoints)
+        .htmlElement((d: any) => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'group relative pointer-events-auto cursor-pointer';
+          wrapper.style.transform = 'translate(-50%, -50%)';
 
-        container.appendChild(halo);
-        container.appendChild(core);
+          const beacon = document.createElement('div');
+          beacon.style.width = d.type === 'ACTIVE' ? '10px' : '8px';
+          beacon.style.height = d.type === 'ACTIVE' ? '10px' : '8px';
+          beacon.style.borderRadius = '50%';
+          beacon.style.backgroundColor = d.color;
+          beacon.style.boxShadow = `0 0 12px ${d.color}`;
+          wrapper.appendChild(beacon);
 
-        // Store reference for quick highlight updates
-        markerElementsRef.current.set(d.id, { core, halo });
-
-        // Hover Tooltip (Concise 2-line dark tooltip <230px)
-        const tooltip = document.createElement('div');
-        tooltip.style.position = 'absolute';
-        tooltip.style.bottom = '22px';
-        tooltip.style.left = '50%';
-        tooltip.style.transform = 'translateX(-50%)';
-        tooltip.style.pointerEvents = 'none';
-        tooltip.style.opacity = '0';
-        tooltip.style.visibility = 'hidden';
-        tooltip.style.transition = 'opacity 0.2s ease, visibility 0.2s ease';
-        tooltip.style.zIndex = '999';
-        tooltip.style.width = 'max-content';
-        tooltip.style.maxWidth = '220px';
-        tooltip.style.backgroundColor = 'rgba(8, 16, 25, 0.96)';
-        tooltip.style.border = '1px solid rgba(255, 255, 255, 0.25)';
-        tooltip.style.borderRadius = '6px';
-        tooltip.style.padding = '8px 10px';
-        tooltip.style.fontFamily = 'monospace';
-        tooltip.style.fontSize = '10px';
-        tooltip.style.color = '#FFFFFF';
-        tooltip.style.boxShadow = '0 10px 25px rgba(0,0,0,0.8)';
-        tooltip.style.backdropFilter = 'blur(8px)';
-
-        tooltip.innerHTML = `
-          <div style="font-weight: 700; color: #FFFFFF; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;">${d.name}</div>
-          <div style="color: #94A3B8; font-size: 9px; margin-top: 2px;">${d.date} &bull; ${d.country.toUpperCase()}</div>
-          <div style="color: #CBD5E1; font-size: 8.5px; margin-top: 3px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${d.shortSummary}</div>
-        `;
-        container.appendChild(tooltip);
-
-        // Bulletproof Hover Event Handlers
-        container.addEventListener('mouseenter', () => {
-          tooltip.style.opacity = '1';
-          tooltip.style.visibility = 'visible';
-        });
-
-        container.addEventListener('mouseleave', () => {
-          tooltip.style.opacity = '0';
-          tooltip.style.visibility = 'hidden';
-        });
-
-        // Bulletproof Pointer & Click Handlers (Stop Propagation for Three.js OrbitControls)
-        const handleClick = (e: MouseEvent | TouchEvent) => {
-          e.stopPropagation();
-          e.preventDefault();
-          
-          if (world.controls()) {
-            world.controls().autoRotate = false;
+          if (!prefersReducedMotion) {
+            const ring = document.createElement('div');
+            ring.style.position = 'absolute';
+            ring.style.top = '50%';
+            ring.style.left = '50%';
+            ring.style.transform = 'translate(-50%, -50%)';
+            ring.style.width = '20px';
+            ring.style.height = '20px';
+            ring.style.borderRadius = '50%';
+            ring.style.border = `1.5px solid ${d.color}`;
+            ring.className = 'animate-ping opacity-75';
+            wrapper.appendChild(ring);
           }
-          
-          setSelectedIncident(d);
-          world.pointOfView({ lat: d.lat, lng: d.lng, altitude: 0.45 }, 1200);
-        };
 
-        container.addEventListener('pointerdown', (e) => e.stopPropagation());
-        container.addEventListener('mousedown', (e) => e.stopPropagation());
-        container.addEventListener('click', handleClick);
+          // Tooltip Label
+          const tooltip = document.createElement('div');
+          tooltip.className = 'hidden group-hover:block absolute left-4 top-1/2 -translate-y-1/2 bg-[#040812]/95 border border-cyan-500/40 text-[10px] font-mono text-white px-2.5 py-1.5 rounded shadow-xl whitespace-nowrap z-50';
+          tooltip.innerHTML = `<span style="color: ${d.color}; font-weight: bold;">●</span> ${d.name} <span class="text-slate-400">(${d.frp})</span>`;
+          wrapper.appendChild(tooltip);
 
-        return container;
+          return wrapper;
+        });
+
+      // Handle texture fallback if external image fails
+      const img = new Image();
+      img.onerror = () => world.globeImageUrl(fallbackTexture);
+      img.src = nasaSatTexture;
+
+      world.pointOfView({ lat: 21.17, lng: 72.83, altitude: 2.1 }, 0);
+
+      if (!prefersReducedMotion) {
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.6;
+      }
+      world.controls().enableZoom = true;
+
+      // Rotate behavior
+      const controls = world.controls();
+      controls.addEventListener('start', () => {
+        controls.autoRotate = false;
+        setIsGlobeRotating(false);
       });
 
-    // Fallback texture handling if primary satellite image fails
-    const img = new Image();
-    img.onerror = () => {
-      world.globeImageUrl(fallbackTexture);
-    };
-    img.src = nasaSatTexture;
+      globeInstanceRef.current = world;
 
-    // Camera initial position & rotation setup
-    world.pointOfView({ lat: 15.0, lng: 45.0, altitude: 0.8 }, 0);
-    world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.35;
-    world.controls().enableZoom = true;
-
-    // Custom orbital light tweaking
-    const scene = world.scene();
-    if (scene) {
-      scene.traverse((obj: any) => {
-        if (obj.isDirectionalLight) {
-          obj.intensity = 2.2;
-          obj.color.setHex(0xffffff);
+      const handleResize = () => {
+        if (globeInstanceRef.current && globeElRef.current) {
+          const w = globeElRef.current.clientWidth || window.innerWidth;
+          const h = globeElRef.current.clientHeight || 540;
+          globeInstanceRef.current.width(w).height(h);
         }
-      });
+      };
+      window.addEventListener('resize', handleResize);
+
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        if (globeElRef.current) globeElRef.current.innerHTML = '';
+      };
+    } catch (e) {
+      console.warn('3D Globe initialization error, fallback texture active', e);
     }
+  }, []);
 
-    globeInstanceRef.current = world;
-
-    const handleResize = () => {
-      if (globeElRef.current && globeInstanceRef.current) {
-        globeInstanceRef.current.width(globeElRef.current.clientWidth);
-        globeInstanceRef.current.height(globeElRef.current.clientHeight);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      if (globeElRef.current) {
-        globeElRef.current.innerHTML = '';
-      }
-    };
-  }, []); // Run ONCE on mount
-
-  // Synchronize Marker Visual States when selectedIncident changes
-  useEffect(() => {
-    markerElementsRef.current.forEach((el, id) => {
-      const isSelected = selectedIncident?.id === id;
-      if (isSelected) {
-        el.core.style.width = '14px';
-        el.core.style.height = '14px';
-        el.core.style.backgroundColor = '#F59E0B';
-        el.core.style.border = '2px solid #FFFFFF';
-        el.core.style.boxShadow = '0 0 14px rgba(255, 255, 255, 0.95)';
-        el.halo.style.display = 'none';
-      } else {
-        el.core.style.width = '9px';
-        el.core.style.height = '9px';
-        el.core.style.backgroundColor = '#F59E0B';
-        el.core.style.border = 'none';
-        el.core.style.boxShadow = '0 0 6px rgba(245, 158, 11, 0.6)';
-        el.halo.style.display = 'block';
-      }
-    });
-  }, [selectedIncident]);
-
-  const handleClosePanel = () => {
-    setSelectedIncident(null);
+  const toggleAutoRotate = () => {
     if (globeInstanceRef.current) {
-      globeInstanceRef.current.controls().autoRotate = true;
+      const nextState = !isGlobeRotating;
+      globeInstanceRef.current.controls().autoRotate = nextState;
+      setIsGlobeRotating(nextState);
     }
   };
 
+  // Filtered live feed incidents
+  const filteredIncidents = LANDING_SIGNALS.filter((sig) => {
+    if (activeFilter === 'CRITICAL') return sig.severity === 'CRITICAL' || sig.severity === 'HIGH';
+    if (activeFilter === 'ROUTINE') return sig.severity === 'MEDIUM' || sig.severity === 'LOW';
+    if (activeFilter === 'NEW') return sig.isNew;
+    return true;
+  });
+
   return (
-    <div className="h-screen w-screen bg-black text-[#F1F4F6] flex flex-col font-mono overflow-hidden relative selection:bg-[#0088ff] selection:text-white">
-      {/* 3D WebGL Earth Canvas */}
-      <div className="absolute inset-0 z-0 bg-black">
-        <div ref={globeElRef} className="w-full h-full" />
-      </div>
+    <div className="min-h-screen bg-[#04070D] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden antialiased">
+      
+      {/* HUD Background Grid Texture */}
+      <div 
+        className="fixed inset-0 pointer-events-none opacity-15 z-0"
+        style={{
+          backgroundImage: `
+            linear-gradient(to right, rgba(56, 189, 248, 0.08) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(56, 189, 248, 0.08) 1px, transparent 1px)
+          `,
+          backgroundSize: '48px 48px'
+        }}
+      />
 
-      {/* Cinematic Edge Vignette Gradient Overlay */}
-      <div className="absolute inset-0 pointer-events-none z-10 bg-radial-vignette opacity-80" />
-
-      {/* TOP HEADER: BRANDING ONLY AS "INDUSTRIAL FIREWATCH AI" (NO NASA BRANDING) */}
-      <header className="relative z-30 pt-6 px-8 flex items-start justify-between w-full pointer-events-auto">
-        {/* TOP LEFT: BRAND TITLE & TELEMETRY */}
-        <div className="space-y-1 text-left text-white/80 font-mono tracking-widest text-[11px] uppercase">
-          <div className="flex items-center space-x-3 text-white font-bold text-sm">
-            <ShieldAlert className="w-4 h-4 text-[#3DB7D9]" />
-            <span>INDUSTRIAL FIREWATCH AI</span>
+      {/* TOP NAVIGATION BAR */}
+      <header className="sticky top-0 z-50 border-b border-cyan-500/20 bg-[#04070D]/90 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="relative flex items-center justify-center">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping absolute" />
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 relative" />
+            </div>
+            <span className="font-mono text-sm font-bold tracking-widest text-white uppercase">
+              GEOFLARE <span className="text-cyan-400">//</span> INTELLIGENCE
+            </span>
+            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/60 border border-cyan-500/30 text-cyan-400">
+              <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+              ORBITAL SENSOR FEED ACTIVE
+            </span>
           </div>
-          <div className="flex items-center space-x-3 text-white/60 text-[10px]">
-            <span>HISTORICAL INCIDENT ARCHIVE</span>
-            <span>&bull;</span>
-            <span>TIME: {timeStr}</span>
-          </div>
-        </div>
 
-        {/* TOP CENTER: BRAND HEADER TEXT */}
-        <div className="absolute left-1/2 top-6 -translate-x-1/2 hidden md:flex flex-col items-center">
-          <div className="font-mono text-sm font-bold tracking-[0.3em] text-white/90 uppercase select-none">
-            GLOBAL THERMAL & HAZARD OBSERVATION
+          <div className="hidden lg:flex items-center gap-6 font-mono text-xs text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-cyan-400" />
+              SYS_TIME: {utcTime}
+            </span>
           </div>
-        </div>
 
-        {/* TOP RIGHT: NAVIGATION */}
-        <div className="flex items-center space-x-6 font-mono text-[11px] tracking-widest text-white/80 uppercase">
-          <button
-            onClick={() => navigate('/command-center')}
-            className="hover:text-white transition flex items-center space-x-1.5 cursor-pointer bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded border border-white/20"
-          >
-            <span>OPERATIONS</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-          <span className="text-white/30">/</span>
-          <button
-            onClick={() => navigate('/mission-brief')}
-            className="hover:text-white transition flex items-center space-x-1.5 cursor-pointer"
-          >
-            <BookOpen className="w-3.5 h-3.5 text-[#3DB7D9]" />
-            <span>MISSION BRIEF</span>
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/mission-brief')}
+              className="text-xs font-mono text-slate-400 hover:text-white uppercase transition-colors px-3 py-2 hidden sm:inline-block cursor-pointer"
+            >
+              Mission Brief
+            </button>
+            <button
+              onClick={() => navigate('/command-center')}
+              className="px-4 py-2 text-xs font-mono font-bold tracking-wider uppercase bg-cyan-500 hover:bg-cyan-400 text-black rounded transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)] flex items-center gap-2 cursor-pointer"
+            >
+              <span>Enter Operations</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* CENTER HUD BRACKET CALLOUT */}
-      {!selectedIncident && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="font-mono text-white/60 text-xs tracking-[0.25em] uppercase backdrop-blur-[1px] px-4 py-2 rounded border border-white/10 bg-black/30">
-            [ INDUSTRIAL FIREWATCH AI : HISTORICAL DISASTER ARCHIVE ]
-          </div>
-        </div>
-      )}
+      {/* HERO SECTION: THREE.JS 3D WEBGL GLOBE + VALUE PROP */}
+      <section className="relative min-h-[calc(100vh-4rem)] flex items-center border-b border-white/10 px-6 py-10 z-10">
+        <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+          
+          {/* Left Column: Narrative & Clear Positioning */}
+          <div className="lg:col-span-6 space-y-6">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-cyan-500/30 bg-cyan-950/40 text-cyan-300 text-xs font-mono">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>GLOBAL THERMAL RECOGNITION PLATFORM</span>
+            </div>
 
-      {/* INCIDENT INFORMATION PANEL (OPENED ON CLICK) */}
-      {selectedIncident && (
-        <div className="absolute top-20 right-8 z-40 w-96 max-w-[calc(100vw-2rem)] bg-[#081019]/95 border border-white/20 rounded-xl p-5 backdrop-blur-xl shadow-2xl font-mono text-xs text-white space-y-4 pointer-events-auto">
-          <div className="flex items-center justify-between border-b border-white/10 pb-3">
-            <span className="px-2.5 py-0.5 text-[9.5px] font-bold tracking-widest rounded bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 uppercase">
-              {selectedIncident.markerType === 'historical' ? 'HISTORICAL EVENT' : 'INCIDENT RECORD'}
-            </span>
-            <button
-              onClick={handleClosePanel}
-              className="p-1 rounded-md text-white/60 hover:text-white hover:bg-white/10 transition cursor-pointer"
-              title="Resume Globe Observation"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+            <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-none">
+              RAW HEAT IS NOISE. <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-200 to-amber-300">
+                WE CLASSIFY THE SIGNAL.
+              </span>
+            </h1>
 
-          <div>
-            <h2 className="text-base font-bold text-white tracking-wide font-sans">{selectedIncident.name}</h2>
-            <p className="text-[11px] text-white/60 font-mono mt-0.5">
-              {selectedIncident.cityRegion}, {selectedIncident.country} &bull; {selectedIncident.date}
+            <p className="text-slate-300 text-base sm:text-lg font-normal leading-relaxed max-w-xl">
+              Standard LEO satellite sensors register thousands of high-temperature false alarms every hour. 
+              <br /><br />
+              <strong className="text-white">GeoFlare applies sub-kilometer spatial GIS boundaries and 180-day persistence logs</strong> to separate routine refinery flares from uncontained wildfires in sub-seconds.
             </p>
-          </div>
 
-          <div className="space-y-3 text-[11px] bg-white/5 p-3.5 rounded-lg border border-white/10 font-sans">
-            <div>
-              <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">EVENT TYPE</span>
-              <span className="text-white font-medium">{selectedIncident.eventType}</span>
+            <div className="flex flex-wrap gap-4 pt-2">
+              <a
+                href="#classifier"
+                className="px-6 py-3.5 bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold text-xs tracking-wider uppercase rounded transition-all shadow-[0_0_25px_rgba(6,182,212,0.35)] flex items-center gap-2"
+              >
+                <span>Launch Anomaly Classifier</span>
+                <span>↓</span>
+              </a>
+              <a
+                href="#surveillance-feed"
+                className="px-6 py-3.5 border border-white/20 hover:border-cyan-400 text-slate-300 font-mono text-xs tracking-wider uppercase rounded transition-all hover:bg-white/5 flex items-center gap-2"
+              >
+                <Activity className="w-4 h-4 text-cyan-400" />
+                <span>Live Feed</span>
+              </a>
             </div>
 
-            <div>
-              <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">WHAT HAPPENED</span>
-              <p className="text-white/90 leading-relaxed text-xs">{selectedIncident.details || selectedIncident.shortSummary}</p>
-            </div>
-
-            <div>
-              <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">IMPACT</span>
-              <p className="text-white/80 leading-relaxed text-xs">{selectedIncident.impact}</p>
-            </div>
-
-            <div className="flex justify-between items-center pt-1 text-[10.5px]">
+            {/* Proof Metrics */}
+            <div className="grid grid-cols-3 gap-6 pt-6 border-t border-white/10 max-w-lg font-mono">
               <div>
-                <span className="text-white/50 font-mono uppercase">STATUS: </span>
-                <span className="text-white font-medium font-mono">{selectedIncident.status}</span>
+                <div className="text-2xl sm:text-3xl font-bold text-cyan-400">&lt; 3.2s</div>
+                <div className="text-[11px] text-slate-400 uppercase mt-0.5">Alert Latency</div>
+              </div>
+              <div>
+                <div className="text-2xl sm:text-3xl font-bold text-white">99.4%</div>
+                <div className="text-[11px] text-slate-400 uppercase mt-0.5">Flare Filter Rate</div>
+              </div>
+              <div>
+                <div className="text-2xl sm:text-3xl font-bold text-emerald-400">Zero</div>
+                <div className="text-[11px] text-slate-400 uppercase mt-0.5">Field Hardware</div>
               </div>
             </div>
           </div>
 
-          <div className="text-[10px] text-white/40 flex items-center justify-between font-mono pt-1">
-            <span>SOURCE: {selectedIncident.source}</span>
+          {/* Right Column: Authentic Interactive 3D WebGL Globe */}
+          <div className="lg:col-span-6 flex flex-col items-center justify-center relative">
+            <div className="relative w-full h-[480px] sm:h-[540px] rounded-2xl border border-cyan-500/20 bg-[#040814]/80 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] backdrop-blur-sm">
+              
+              {/* Three.js Globe Container */}
+              <div ref={globeElRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+
+              {/* HUD Reticle Overlays */}
+              <div className="absolute top-4 left-4 font-mono text-[10px] text-cyan-400/90 bg-[#04070D]/80 px-3 py-1.5 rounded border border-cyan-500/30 backdrop-blur-md flex items-center gap-2">
+                <Globe2 className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                <span>3D WEBGL SATELLITE GLOBE (NOAA-20 / VIIRS)</span>
+              </div>
+
+              <div className="absolute top-4 right-4 flex items-center gap-2">
+                <button
+                  onClick={toggleAutoRotate}
+                  className="px-2.5 py-1 font-mono text-[10px] bg-[#04070D]/80 hover:bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 rounded backdrop-blur-md transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Compass className={`w-3 h-3 ${isGlobeRotating ? 'animate-spin' : ''}`} />
+                  <span>{isGlobeRotating ? 'ROTATION: ON' : 'ROTATION: PAUSED'}</span>
+                </button>
+              </div>
+
+              <div className="absolute bottom-4 left-4 font-mono text-[10px] text-slate-400 bg-[#04070D]/80 px-3 py-1.5 rounded border border-white/10">
+                ACTIVE INCIDENT BEACONS: <span className="text-cyan-400 font-bold">{LANDING_SIGNALS.length + HISTORICAL_EVENTS.slice(0, 12).length} SITES</span>
+              </div>
+
+              <div className="absolute bottom-4 right-4 font-mono text-[10px] text-slate-400 bg-[#04070D]/80 px-3 py-1.5 rounded border border-white/10 text-right">
+                RES: 375M I-BAND // SPECTRAL: 3.74µm - 11.45µm
+              </div>
+            </div>
           </div>
 
-          <button
-            onClick={handleClosePanel}
-            className="w-full py-2.5 px-3 bg-white/10 hover:bg-white/20 text-white font-mono text-[11px] tracking-wider uppercase rounded transition border border-white/20 cursor-pointer"
-          >
-            RESUME GLOBE OBSERVATION
-          </button>
+        </div>
+      </section>
+
+      {/* SECTION 2: MULTI-SPECTRAL ANOMALY CLASSIFIER */}
+      <section id="classifier" className="py-24 border-b border-white/10 px-6 bg-[#060910] z-10 relative">
+        <div className="max-w-7xl mx-auto space-y-10">
+          
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+              <span className="font-mono text-xs uppercase tracking-widest text-cyan-400 font-semibold flex items-center gap-2">
+                <Layers className="w-3.5 h-3.5" />
+                [ MULTI-SPECTRAL ANOMALY DISCRIMINATOR ]
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mt-1">
+                ONE THERMAL SPIKE. FIVE DISTINCT SIGNATURES.
+              </h2>
+            </div>
+            <p className="font-mono text-xs text-slate-400 max-w-md">
+              Select a signal below to see how GeoFlare synthesizes spatial GIS boundaries, infrared radiative power (FRP), and 180-day persistence archives.
+            </p>
+          </div>
+
+          {/* Classifier Console Box */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 rounded-xl border border-cyan-500/30 bg-[#070D18] overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.7)]">
+            
+            {/* Left Selection List */}
+            <div className="lg:col-span-5 border-b lg:border-b-0 lg:border-r border-white/10 divide-y divide-white/5">
+              {LANDING_SIGNALS.map((sig) => {
+                const isSelected = selectedSignal.id === sig.id;
+                const statusColor = 
+                  sig.severity === 'CRITICAL' ? '#ef4444' : 
+                  sig.severity === 'HIGH' ? '#f97316' : 
+                  sig.severity === 'MEDIUM' ? '#f59e0b' : '#10b981';
+
+                return (
+                  <button
+                    key={sig.id}
+                    onClick={() => setSelectedSignal(sig)}
+                    className={`w-full text-left p-5 transition-all relative flex flex-col gap-2 cursor-pointer ${
+                      isSelected ? 'bg-cyan-950/40 text-white' : 'hover:bg-white/[0.02] text-slate-400'
+                    }`}
+                  >
+                    {isSelected && (
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-400 shadow-[0_0_12px_#38bdf8]" />
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-white flex items-center gap-2">
+                        <Flame className="w-3.5 h-3.5" style={{ color: statusColor }} />
+                        {sig.classification}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-mono font-bold"
+                        style={{
+                          backgroundColor: `${statusColor}20`,
+                          color: statusColor,
+                          border: `1px solid ${statusColor}40`,
+                        }}
+                      >
+                        {sig.severity}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs text-slate-400 font-mono">
+                      <span>{sig.locationName}</span>
+                      <span className="text-cyan-400 font-bold">{sig.frpMw} MW</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Right: Telemetry & Reasoning Inspector */}
+            <div className="lg:col-span-7 p-6 sm:p-8 flex flex-col justify-between bg-gradient-to-br from-[#060B14] to-[#04070D]">
+              
+              {/* Telemetry Header Bar */}
+              <div className="flex flex-wrap items-center justify-between border-b border-white/10 pb-4 gap-2 font-mono text-xs">
+                <div>
+                  <span className="text-slate-500">SIGNAL ID:</span>{' '}
+                  <span className="text-white font-bold">{selectedSignal.id}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">COORDINATES:</span>{' '}
+                  <span className="text-cyan-400 font-bold">{selectedSignal.lat.toFixed(4)}°, {selectedSignal.lng.toFixed(4)}°</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">CONFIDENCE:</span>{' '}
+                  <span className="text-emerald-400 font-bold">{selectedSignal.confidence}%</span>
+                </div>
+              </div>
+
+              {/* FLIR Visualizer Box */}
+              <div className="my-6 relative h-60 w-full rounded-lg border border-white/10 bg-black/80 overflow-hidden flex items-center justify-center">
+                <div 
+                  className="w-44 h-44 rounded-full transition-all duration-700 blur-2xl opacity-70 animate-pulse"
+                  style={{
+                    backgroundColor: 
+                      selectedSignal.severity === 'CRITICAL' ? '#ef4444' : 
+                      selectedSignal.severity === 'HIGH' ? '#f97316' : '#38bdf8'
+                  }}
+                />
+                <div className="absolute w-6 h-6 rounded-full bg-white shadow-[0_0_20px_#ffffff]" />
+
+                {/* HUD Crosshairs */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
+                  <div className="w-32 h-32 border border-dashed border-cyan-400 rounded-full animate-spin-slow" />
+                  <div className="absolute w-44 h-[1px] bg-cyan-400" />
+                  <div className="absolute h-44 w-[1px] bg-cyan-400" />
+                </div>
+
+                <div className="absolute bottom-3 left-3 bg-black/80 px-2.5 py-1 rounded border border-white/10 font-mono text-[11px] text-slate-300">
+                  RADIATIVE POWER: <span className="text-white font-bold">{selectedSignal.frpMw} MW</span>
+                </div>
+                <div className="absolute bottom-3 right-3 bg-black/80 px-2.5 py-1 rounded border border-white/10 font-mono text-[11px] text-slate-300">
+                  BRIGHTNESS TEMP: <span className="text-amber-400 font-bold">{selectedSignal.brightnessK} K</span>
+                </div>
+              </div>
+
+              {/* Reasoning Steps Audit */}
+              <div className="space-y-3 font-mono">
+                <div className="text-[11px] text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  CLASSIFIER REASONING AUDIT LOG:
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  {selectedSignal.reasoningSteps.map((step) => (
+                    <div key={step.stepIndex} className="p-2.5 rounded bg-white/[0.03] border border-white/10">
+                      <div className="text-[10px] text-slate-400 font-bold mb-0.5">
+                        STEP 0{step.stepIndex} // {step.label.toUpperCase()}
+                      </div>
+                      <div className="text-slate-200 text-[11px] leading-tight">{step.detail}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-3 bg-cyan-950/30 border border-cyan-500/30 rounded text-xs text-cyan-300 mt-2">
+                  <strong className="text-cyan-400">RECOMMENDED ACTION:</strong> {selectedSignal.suggestedAction}
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 3: 4-STEP OPERATIONAL PIPELINE */}
+      <section className="py-20 border-b border-white/10 px-6 bg-[#03060B] z-10 relative">
+        <div className="max-w-7xl mx-auto space-y-12">
+          <div>
+            <span className="font-mono text-xs uppercase tracking-widest text-cyan-400 font-semibold flex items-center gap-2">
+              <Zap className="w-3.5 h-3.5" />
+              [ THE ARCHITECTURE ]
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mt-1">
+              4-STAGE AUTONOMOUS DETECTION PIPELINE
+            </h2>
+            <p className="text-slate-400 text-sm max-w-2xl mt-1 font-mono">
+              From low-earth orbit infrared packet downlink to verified industrial SCADA dispatch in under 30 seconds.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative font-mono">
+            {[
+              {
+                step: '01',
+                title: 'Satellite Downlink',
+                desc: 'Raw thermal packets ingested directly from NOAA-20 VIIRS (3.74µm I-Band) and Sentinel-3 SLSTR channels.'
+              },
+              {
+                step: '02',
+                title: 'Spatial Boundary GIS',
+                desc: 'Coordinates cross-referenced against refinery fences, chemical SEZs, and industrial facility registries.'
+              },
+              {
+                step: '03',
+                title: '180-Day History Audit',
+                desc: 'AI checks historical persistence: 6-month continuous flare stack vs new uncontained spatial firestorm.'
+              },
+              {
+                step: '04',
+                title: 'Automated Dispatch',
+                desc: 'Routine flares silenced automatically; uncontained fires trigger Webhooks & SMS to safety officers.'
+              },
+            ].map((st, i) => (
+              <div
+                key={st.step}
+                className="p-6 rounded-lg border border-white/10 bg-[#070D18] flex flex-col justify-between hover:border-cyan-500/40 transition-colors"
+              >
+                <div>
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-cyan-400 text-xs font-bold">STAGE {st.step}</span>
+                    {i < 3 && <ChevronRight className="hidden md:block w-4 h-4 text-slate-600" />}
+                  </div>
+                  <h3 className="text-sm font-bold text-white mb-2">{st.title}</h3>
+                  <p className="text-xs text-slate-400 leading-relaxed font-sans">{st.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 4: REAL-TIME ACTIVE SURVEILLANCE FEED */}
+      <section id="surveillance-feed" className="py-24 px-6 border-b border-white/10 bg-[#04070D] z-10 relative">
+        <div className="max-w-7xl mx-auto space-y-8">
+          
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div>
+              <span className="font-mono text-xs uppercase tracking-widest text-cyan-400 font-semibold flex items-center gap-2">
+                <Radar className="w-3.5 h-3.5 animate-spin-slow" />
+                [ LIVE SURVEILLANCE TELEMETRY FEED ]
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold text-white mt-1">
+                ACTIVE SATELLITE DISPATCH STREAM
+              </h2>
+            </div>
+            
+            {/* Filter Buttons */}
+            <div className="flex items-center gap-2 font-mono text-xs">
+              <Filter className="w-3.5 h-3.5 text-slate-400" />
+              {(['ALL', 'CRITICAL', 'ROUTINE', 'NEW'] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-3 py-1 rounded transition-colors cursor-pointer ${
+                    activeFilter === filter
+                      ? 'bg-cyan-500 text-black font-bold'
+                      : 'bg-white/5 text-slate-400 hover:text-white border border-white/10'
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Telemetry Table */}
+          <div className="rounded-xl border border-white/10 overflow-hidden bg-[#060A13]">
+            <table className="w-full text-left font-mono text-xs">
+              <thead className="border-b border-white/10 bg-white/[0.02] text-slate-400">
+                <tr>
+                  <th className="p-4">INCIDENT ID</th>
+                  <th className="p-4">LOCATION / FACILITY</th>
+                  <th className="p-4">SENSOR</th>
+                  <th className="p-4">RADIATIVE POWER</th>
+                  <th className="p-4">CLASSIFICATION</th>
+                  <th className="p-4">CONFIDENCE</th>
+                  <th className="p-4 text-right">ACTION</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-slate-300">
+                {filteredIncidents.map((inc) => {
+                  const isCritical = inc.severity === 'CRITICAL' || inc.severity === 'HIGH';
+                  return (
+                    <tr key={inc.id} className="hover:bg-white/[0.03] transition-colors">
+                      <td className="p-4 font-bold text-cyan-400 flex items-center gap-2">
+                        {isCritical ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        )}
+                        {inc.id}
+                      </td>
+                      <td className="p-4 font-sans font-medium text-white">
+                        {inc.locationName}
+                      </td>
+                      <td className="p-4 text-slate-400">NOAA-20 / VIIRS</td>
+                      <td className="p-4 text-amber-400 font-bold">{inc.frpMw} MW</td>
+                      <td className="p-4">
+                        <span
+                          className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
+                            isCritical
+                              ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                              : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                          }`}
+                        >
+                          {inc.classification}
+                        </span>
+                      </td>
+                      <td className="p-4 text-emerald-400">{inc.confidence}%</td>
+                      <td className="p-4 text-right">
+                        <button
+                          onClick={() => setInspectedIncident(inc)}
+                          className="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 rounded text-[11px] transition-all cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <span>Inspect</span>
+                          <Search className="w-3 h-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="pt-2 flex justify-center">
+            <button
+              onClick={() => navigate('/command-center')}
+              className="py-3 px-8 bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold text-xs tracking-wider uppercase rounded transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] flex items-center gap-2 cursor-pointer"
+            >
+              <span>View All Operational Incidents</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+        </div>
+      </section>
+
+      {/* INSPECTION MODAL */}
+      {inspectedIncident && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="max-w-2xl w-full bg-[#070D18] border border-cyan-500/40 rounded-xl p-6 space-y-6 font-mono relative shadow-2xl">
+            <button 
+              onClick={() => setInspectedIncident(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-white/10 pb-4">
+              <ShieldAlert className="w-5 h-5 text-cyan-400" />
+              <div>
+                <h3 className="text-lg font-bold text-white">{inspectedIncident.classification} // {inspectedIncident.id}</h3>
+                <p className="text-xs text-slate-400 font-sans">{inspectedIncident.locationName}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="p-3 bg-white/[0.02] border border-white/10 rounded">
+                <span className="text-slate-500">COORDINATES:</span>
+                <div className="text-white font-bold mt-1">{inspectedIncident.lat.toFixed(4)}° N, {inspectedIncident.lng.toFixed(4)}° E</div>
+              </div>
+              <div className="p-3 bg-white/[0.02] border border-white/10 rounded">
+                <span className="text-slate-500">RADIATIVE POWER:</span>
+                <div className="text-amber-400 font-bold mt-1">{inspectedIncident.frpMw} MW (Temp: {inspectedIncident.brightnessK} K)</div>
+              </div>
+              <div className="p-3 bg-white/[0.02] border border-white/10 rounded">
+                <span className="text-slate-500">NEAREST ASSET:</span>
+                <div className="text-white font-bold mt-1">{inspectedIncident.nearestFacilityName} ({inspectedIncident.facilityDistanceKm} km)</div>
+              </div>
+              <div className="p-3 bg-white/[0.02] border border-white/10 rounded">
+                <span className="text-slate-500">CONFIDENCE RATING:</span>
+                <div className="text-emerald-400 font-bold mt-1">{inspectedIncident.confidence}% Match</div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-cyan-950/40 border border-cyan-500/30 rounded text-xs text-cyan-200 leading-relaxed font-sans">
+              <strong className="text-cyan-400 font-mono">ACTION PROTOCOL:</strong> {inspectedIncident.suggestedAction}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setInspectedIncident(null)}
+                className="px-4 py-2 text-xs border border-white/20 text-slate-300 rounded hover:bg-white/5 cursor-pointer"
+              >
+                Close Window
+              </button>
+              <button
+                onClick={() => navigate('/command-center')}
+                className="px-4 py-2 text-xs bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded cursor-pointer"
+              >
+                Open in Command Center →
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* BOTTOM FOOTER */}
-      <footer className="mt-auto relative z-30 pb-6 px-8 flex items-center justify-between w-full pointer-events-none font-mono text-[10px] text-white/60 tracking-widest uppercase">
-        <div className="flex items-center space-x-6">
-          <span>HISTORICAL DISASTERS: {HISTORICAL_EVENTS.length} ARCHIVED RECORDS</span>
-          <span>&bull;</span>
-          <span>GLOBAL DISTRIBUTION: ACTIVE</span>
+      {/* FINAL CALL TO ACTION */}
+      <section className="py-24 px-6 text-center bg-gradient-to-t from-cyan-950/40 via-transparent to-transparent z-10 relative">
+        <div className="max-w-3xl mx-auto space-y-6">
+          <span className="font-mono text-xs uppercase tracking-widest text-cyan-400 border border-cyan-500/30 px-3 py-1 rounded bg-cyan-950/60">
+            OPERATIONAL READINESS
+          </span>
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+            Stop Chasing False Alarms.
+          </h2>
+          <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
+            Equip your emergency operations and plant safety control rooms with automated, global thermal recognition. Integrates into existing SCADA & dispatch systems in minutes.
+          </p>
+          <div className="pt-4 flex justify-center gap-4">
+            <button
+              onClick={() => navigate('/command-center')}
+              className="px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold text-sm tracking-wider uppercase rounded transition-all shadow-[0_0_30px_rgba(6,182,212,0.4)] flex items-center gap-2 cursor-pointer"
+            >
+              <span>Launch Command Center</span>
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          <span>INDUSTRIAL FIREWATCH AI</span>
-          <span>:ONLINE</span>
+        <div className="max-w-7xl mx-auto border-t border-white/10 mt-20 pt-8 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-slate-500 gap-4">
+          <div>GEOFLARE AI // AUTONOMOUS ORBITAL SURVEILLANCE PLATFORM</div>
+          <div>NOAA-20 VIIRS · MODIS · SENTINEL-3 SLSTR COMPLIANT</div>
         </div>
-      </footer>
+      </section>
+
     </div>
   );
-};
+}
+
+export const LandingPage = GeoFlareLanding;
