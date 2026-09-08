@@ -29,7 +29,6 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database.connection import get_db
 from app.models.models import (
-    Facility,
     FireDetection,
     FireEvent,
     FirePrediction,
@@ -148,14 +147,13 @@ def serialise_event(
     *,
     recurrence: int = 0,
     history_days: int = 0,
-    facility: Optional[Facility] = None,
     prediction: Optional[FirePrediction] = None,
 ) -> Dict[str, Any]:
     severity = prediction.severity if prediction else provisional_severity(event.frp_latest_mw)
     probabilities: Optional[Dict[str, float]] = None
     distance_km = (
-        round(event.nearest_facility_distance_m / 1000.0, 2)
-        if event.nearest_facility_distance_m is not None
+        round(event.nearest_industrial_distance_m / 1000.0, 2)
+        if event.nearest_industrial_distance_m is not None
         else None
     )
 
@@ -173,9 +171,13 @@ def serialise_event(
             "step_index": 2,
             "label": "Spatial GIS Context",
             "detail": (
-                f"Nearest registered facility {facility.name} at {distance_km} km"
-                if facility and distance_km is not None
-                else "No facility association resolved"
+                # "Registered" was accurate against a curated registry; these
+                # come from OpenStreetMap, where a real site is often unnamed.
+                f"{event.nearest_industrial_site} ({event.nearest_industrial_type}) "
+                + ("containing this detection" if event.inside_industrial_site
+                   else f"at {distance_km} km")
+                if event.nearest_industrial_site and distance_km is not None
+                else "No industrial site mapped within 1 km"
             ),
             "status": "neutral",
         },
@@ -260,9 +262,13 @@ def serialise_event(
         "location_name": event.location_name
         or f"{abs(event.latitude):.4f}°{'N' if event.latitude >= 0 else 'S'}, "
         f"{abs(event.longitude):.4f}°{'E' if event.longitude >= 0 else 'W'}",
-        "nearest_facility_id": event.nearest_facility_id,
-        "nearest_facility_name": facility.name if facility else None,
+        # From OpenStreetMap, so there is no registry id: the name is the
+        # identity, and a genuine site can be unnamed.
+        "nearest_facility_id": event.nearest_industrial_site,
+        "nearest_facility_name": event.nearest_industrial_site,
+        "nearest_facility_type": event.nearest_industrial_type,
         "nearest_facility_distance_km": distance_km,
+        "inside_industrial_site": event.inside_industrial_site,
         "recurrence_count": recurrence,
         "history_days": history_days,
         "analysis_status": event.analysis_status,
@@ -287,7 +293,7 @@ async def list_fires(
     limit: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
-    query = select(FireEvent).options(selectinload(FireEvent.nearest_facility))
+    query = select(FireEvent)
 
     if status != "all":
         query = query.where(FireEvent.status == status)
@@ -332,7 +338,6 @@ async def list_fires(
             event,
             recurrence=await recurrence_count(db, event),
             history_days=history_days,
-            facility=event.nearest_facility,
             prediction=predictions.get(event.id),
         )
         for event in events
@@ -353,7 +358,6 @@ async def get_fire(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str
     event = (
         await db.execute(
             select(FireEvent)
-            .options(selectinload(FireEvent.nearest_facility))
             .where(FireEvent.id == fire_id)
         )
     ).scalar_one_or_none()
@@ -365,7 +369,6 @@ async def get_fire(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str
         event,
         recurrence=await recurrence_count(db, event),
         history_days=await history_window_days(db),
-        facility=event.nearest_facility,
         prediction=predictions.get(event.id),
     )
 
@@ -410,27 +413,88 @@ async def get_fire_detections(fire_id: str, db: AsyncSession = Depends(get_db)) 
 
 @router.get("/api/facilities")
 async def list_facilities(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
-    facilities = list((await db.execute(select(Facility).order_by(Facility.id))).scalars())
+    """Industrial sites OpenStreetMap maps near the detected fires.
+
+    This replaced a curated registry of six hand-seeded Gujarat plants. That
+    list could only ever describe the region someone thought to seed, so once
+    the AOI moved to Telangana every fire reported a "nearest facility" 700 km
+    away. These are discovered from the same 1 km enrichment the classifier
+    uses, so they follow the AOI wherever it points.
+
+    Sites are keyed by name and type: OSM way ids are not stable across edits,
+    and one plant is commonly mapped as several overlapping ways.
+    """
+    rows = (
+        await db.execute(
+            select(FireEvent, FirePrediction)
+            .join(FirePrediction, FirePrediction.fire_event_id == FireEvent.id)
+            .order_by(FireEvent.last_detected.desc())
+        )
+    ).all()
+
+    sites: Dict[str, Dict[str, Any]] = {}
+    for event, prediction in rows:
+        for site in (prediction.feature_snapshot or {}).get("industrial_sites", []) or []:
+            key = f"{site.get('type')}|{site.get('name')}"
+            entry = sites.get(key)
+            if entry is None:
+                entry = {
+                    "id": key,
+                    "name": site.get("name"),
+                    "type": site.get("type"),
+                    # The site's own geometry is not stored, only its distance
+                    # from each fire, so it is placed at the nearest fire that
+                    # saw it. Honest to a few hundred metres, and never
+                    # invented.
+                    "latitude": event.latitude,
+                    "longitude": event.longitude,
+                    "location": event.location_name,
+                    "named": bool(site.get("named")),
+                    "nearest_distance_m": site.get("distance_m"),
+                    "fire_event_ids": [],
+                    "current_frp": 0.0,
+                    "last_detected": None,
+                }
+                sites[key] = entry
+
+            entry["fire_event_ids"].append(event.id)
+            entry["current_frp"] = max(entry["current_frp"], event.frp_latest_mw or 0.0)
+            if site.get("distance_m") is not None and (
+                entry["nearest_distance_m"] is None
+                or site["distance_m"] < entry["nearest_distance_m"]
+            ):
+                entry["nearest_distance_m"] = site["distance_m"]
+                entry["latitude"] = event.latitude
+                entry["longitude"] = event.longitude
+                entry["location"] = event.location_name
+            if event.last_detected and (
+                entry["last_detected"] is None
+                or event.last_detected.isoformat() > entry["last_detected"]
+            ):
+                entry["last_detected"] = event.last_detected.isoformat()
+
+    ordered = sorted(
+        sites.values(),
+        key=lambda item: (-len(item["fire_event_ids"]), item["name"] or ""),
+    )
     return {
-        "total": len(facilities),
+        "total": len(ordered),
+        "source": "openstreetmap",
         "facilities": [
             {
-                "id": f.id,
-                "name": f.name,
-                "type": f.type,
-                "latitude": f.latitude,
-                "longitude": f.longitude,
-                "location": f.location,
-                "status": f.status,
-                "baseline_frp": f.baseline_frp,
-                "current_frp": f.current_frp,
-                "last_detected": f.last_detected.isoformat() if f.last_detected else None,
-                "total_events_past_90_days": f.total_events_past_90_days,
-                "risk_buffer_radius_km": f.risk_buffer_radius_km,
-                "emergency_contact": f.emergency_contact,
+                **item,
+                "event_count": len(item["fire_event_ids"]),
+                # A site with a fire detected inside or beside it is worth
+                # attention; this is an observation, not a safety judgement.
+                "status": "ANOMALY_DETECTED" if len(item["fire_event_ids"]) > 1 else "ELEVATED",
             }
-            for f in facilities
+            for item in ordered
         ],
+        "caveat": (
+            "Industrial sites as mapped in OpenStreetMap within 1 km of a detected fire. "
+            "Coverage varies by region and many industrial parcels are unnamed, so this is "
+            "a lower bound rather than a complete asset register."
+        ),
     }
 
 
@@ -665,7 +729,7 @@ async def get_surroundings(fire_id: str, db: AsyncSession = Depends(get_db)) -> 
         "nearest_factory_m", "nearest_gas_facility_m", "nearest_residential_m",
         "nearest_forest_m", "nearest_farmland_m", "inside_industrial", "inside_forest",
         "inside_farmland", "inside_residential", "land_cover", "osm_coverage",
-        "osm_element_count", "emergency_facilities",
+        "osm_element_count", "emergency_facilities", "industrial_sites",
     )
     return {
         "fire_event_id": fire_id,
@@ -689,7 +753,6 @@ async def get_analysis(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict
     event = (
         await db.execute(
             select(FireEvent)
-            .options(selectinload(FireEvent.nearest_facility))
             .where(FireEvent.id == fire_id)
         )
     ).scalar_one_or_none()
@@ -701,7 +764,6 @@ async def get_analysis(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict
         event,
         recurrence=await recurrence_count(db, event),
         history_days=await history_window_days(db),
-        facility=event.nearest_facility,
         prediction=predictions.get(fire_id),
     )
 

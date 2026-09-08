@@ -25,7 +25,6 @@ TABLES = [
     "weather_observations",
     "fire_detections",
     "fire_events",
-    "facilities",
     "osm_cache",
     "ingest_runs",
 ]

@@ -54,36 +54,6 @@ def detection_identity(
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-class Facility(Base):
-    """Curated industrial asset registry.
-
-    Deliberately NOT derived from OpenStreetMap: real operations systems keep
-    a curated registry, and OSM industrial polygons are frequently unnamed and
-    incomplete. Phase 4 enriches these with OSM tags rather than replacing them.
-    """
-
-    __tablename__ = "facilities"
-
-    id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
-    type = Column(String, nullable=False)
-    latitude = Column(Float, nullable=False)
-    longitude = Column(Float, nullable=False)
-    geometry = Column(Geometry("POINT", srid=4326), nullable=False)
-    location = Column(String, nullable=False)
-    status = Column(String, nullable=False, default="NORMAL")
-    baseline_frp = Column(Float, nullable=False, default=15.0)
-    current_frp = Column(Float, nullable=False, default=15.0)
-    last_detected = Column(DateTime(timezone=True), nullable=True)
-    total_events_past_90_days = Column(Integer, nullable=False, default=0)
-    risk_buffer_radius_km = Column(Float, nullable=False, default=2.0)
-    emergency_contact = Column(String, nullable=True)
-    osm_tags = Column(JSONB, nullable=True)  # populated in Phase 4
-    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-
-    # GIST index on `geometry` is created automatically by geoalchemy2.
-
-
 class FireEvent(Base):
     """A physical fire, assembled from many detections (spec section 7)."""
 
@@ -125,8 +95,13 @@ class FireEvent(Base):
 
     location_name = Column(String, nullable=True)
     land_cover = Column(String, nullable=True)
-    nearest_facility_id = Column(String, ForeignKey("facilities.id"), nullable=True)
-    nearest_facility_distance_m = Column(Float, nullable=True)
+    # Derived from the OSM enrichment, not a curated registry. There is no
+    # stable id for an OSM way across edits, so the name is the identity and a
+    # site can legitimately be unnamed.
+    nearest_industrial_site = Column(String, nullable=True)
+    nearest_industrial_type = Column(String, nullable=True)
+    nearest_industrial_distance_m = Column(Float, nullable=True)
+    inside_industrial_site = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
@@ -134,7 +109,6 @@ class FireEvent(Base):
     detections = relationship(
         "FireDetection", back_populates="event", cascade="all, delete-orphan"
     )
-    nearest_facility = relationship("Facility", foreign_keys=[nearest_facility_id])
 
     __table_args__ = (
         Index("ix_fire_events_last_detected", "last_detected"),

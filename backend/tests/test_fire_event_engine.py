@@ -12,11 +12,9 @@ from sqlalchemy import func, select, text
 
 from app.config import settings
 from app.models.models import FireDetection, FireEvent, detection_identity
-from app.seed_data import FACILITIES_DB
 from app.services.fire_event_service import (
     mark_stale_events_contained,
     process_detections,
-    seed_facilities,
 )
 from tests.conftest import make_detection
 
@@ -283,40 +281,20 @@ class TestEventAggregates:
         assert event.last_detected == BASE + datetime.timedelta(hours=5)
 
 
-class TestFacilityRegistry:
-    async def test_seed_is_idempotent(self, db):
-        assert await seed_facilities(db, FACILITIES_DB) == 6
-        await seed_facilities(db, FACILITIES_DB)
-        total = (await db.execute(text("SELECT COUNT(*) FROM facilities"))).scalar_one()
-        assert total == 6
+class TestIndustrialSiteAttachment:
+    """The curated registry is gone. "Nearest industrial site" now comes from
+    the OSM enrichment, which follows the AOI instead of describing whichever
+    region happened to be seeded — the registry held six Gujarat plants while
+    the pipeline polled Telangana, so every fire reported a nearest facility
+    700 km away."""
 
-    async def test_nearest_facility_attached_by_knn(self, db):
-        await seed_facilities(db, FACILITIES_DB)
-        # FAC-001 Surat Petrochemicals Complex sits at 21.1702, 72.8311.
+    async def test_a_new_event_starts_with_no_site_attached(self, db):
+        """Attachment is the analysis step's job, not ingest's."""
         await process_detections(db, [make_detection(*SURAT, BASE, frp=180.0)])
-
         event = (await db.execute(select(FireEvent))).scalar_one()
-        assert event.nearest_facility_id == "FAC-001"
-        assert 0 < event.nearest_facility_distance_m < 1000
-
-    async def test_a_facility_well_inside_the_cap_is_still_attached(self, db):
-        """30.5 km from FAC-006 - far, but plausibly the same neighbourhood."""
-        await seed_facilities(db, FACILITIES_DB)
-        await process_detections(db, [make_detection(21.47, 72.83, BASE)])
-        event = (await db.execute(select(FireEvent))).scalar_one()
-        assert event.nearest_facility_id == "FAC-006"
-        assert event.nearest_facility_distance_m < settings.FACILITY_ATTACH_MAX_KM * 1000
-
-    async def test_a_fire_beyond_the_cap_is_left_unassigned(self, db):
-        """The registry is a curated asset list, so "nearest" is not always
-        "near". Naming the closest row regardless of distance reported a fire
-        in Telangana as 764 km from a plant in Gujarat, which reads as though
-        that plant were implicated."""
-        await seed_facilities(db, FACILITIES_DB)
-        await process_detections(db, [make_detection(23.5, 70.5, BASE)])  # 123 km out
-        event = (await db.execute(select(FireEvent))).scalar_one()
-        assert event.nearest_facility_id is None
-        assert event.nearest_facility_distance_m is None
+        assert event.nearest_industrial_site is None
+        assert event.nearest_industrial_distance_m is None
+        assert event.inside_industrial_site is False
 
 
 class TestContainment:

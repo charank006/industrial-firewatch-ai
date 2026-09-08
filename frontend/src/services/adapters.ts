@@ -17,7 +17,6 @@ import type { ApiAnalysis, ApiFacility, ApiFireEvent, ApiReasoningStep } from '.
 import type {
   EventClassification,
   FacilityStatus,
-  FacilityType,
   FireAnalysis,
   FireClassId,
   ImpactDetail,
@@ -68,15 +67,6 @@ function verdictOrUndefined(candidate: unknown): ValidityDetail['verdict'] | und
     ? (candidate as ValidityDetail['verdict'])
     : undefined;
 }
-
-const FACILITY_TYPES: readonly FacilityType[] = [
-  'Refinery',
-  'Power Plant',
-  'Chemical Complex',
-  'LNG Terminal',
-  'Fertilizer Plant',
-  'Metal Smelter',
-];
 
 const FACILITY_STATUSES: readonly FacilityStatus[] = ['NORMAL', 'ELEVATED', 'ANOMALY_DETECTED'];
 
@@ -136,17 +126,19 @@ export function adaptFacility(facility: ApiFacility): IndustrialFacility {
   return {
     id: facility.id,
     name: facility.name,
-    type: oneOf(FACILITY_TYPES, facility.type, 'Chemical Complex'),
+    // Free text from OSM tags, so no `oneOf` narrowing here - clamping it to
+    // a closed union would relabel a real site as something it is not.
+    type: facility.type,
     lat: facility.latitude,
     lng: facility.longitude,
     location: facility.location,
     status: oneOf(FACILITY_STATUSES, facility.status, 'NORMAL'),
-    baselineFRP: facility.baseline_frp,
+    named: Boolean(facility.named),
+    nearestDistanceM: num(facility.nearest_distance_m),
     currentFRP: facility.current_frp,
     lastDetected: facility.last_detected ?? '',
-    totalEventsPast90Days: facility.total_events_past_90_days,
-    emergencyContact: facility.emergency_contact ?? '',
-    riskBufferRadiusKm: facility.risk_buffer_radius_km,
+    eventCount: facility.event_count,
+    fireEventIds: facility.fire_event_ids ?? [],
   };
 }
 

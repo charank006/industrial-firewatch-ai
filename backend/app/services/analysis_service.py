@@ -156,6 +156,16 @@ def _apply_surroundings(event: FireEvent, features: SurroundingsFeatures) -> Non
     event.land_cover = features.land_cover
     if features.location_name:
         event.location_name = features.location_name
+
+    # "Nearest industrial site" now comes from what OSM maps around this fire,
+    # not from a curated registry. The registry could only ever describe the
+    # region it was seeded for, and reported a plant 700 km away as "nearest"
+    # for every fire outside it.
+    nearest_site = features.industrial_sites[0] if features.industrial_sites else None
+    event.nearest_industrial_site = nearest_site["name"] if nearest_site else None
+    event.nearest_industrial_type = nearest_site["type"] if nearest_site else None
+    event.nearest_industrial_distance_m = nearest_site["distance_m"] if nearest_site else None
+    event.inside_industrial_site = bool(nearest_site and nearest_site["inside"])
     # Sparse coverage is reported, never silently treated as "nothing here"
     # (spec Rule 4). Phase 5 turns it into a confidence penalty.
     event.surroundings_status = features.osm_coverage

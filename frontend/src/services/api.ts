@@ -119,13 +119,14 @@ export interface ApiFacility {
   longitude: number;
   location: string;
   status: string;
-  baseline_frp: number;
+  named: boolean;
+  nearest_distance_m: number | null;
   current_frp: number;
   last_detected: string | null;
-  total_events_past_90_days: number;
-  risk_buffer_radius_km: number;
-  emergency_contact: string | null;
+  event_count: number;
+  fire_event_ids: string[];
 }
+
 
 export interface FiresQuery {
   bbox?: string;
@@ -149,7 +150,12 @@ export function fetchFires(query: FiresQuery = {}) {
 }
 
 export function fetchFacilities() {
-  return request<{ total: number; facilities: ApiFacility[] }>('/api/facilities');
+  return request<{
+    total: number;
+    source: string;
+    caveat: string;
+    facilities: ApiFacility[];
+  }>('/api/facilities');
 }
 
 export function fetchSystemStatus() {

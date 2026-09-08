@@ -381,3 +381,60 @@ class TestEmergencyFacilities:
         assert kinds.count("hospital") == result.hospitals
         assert kinds.count("fire_station") == result.fire_stations
         assert kinds.count("school") == result.schools
+
+
+class TestIndustrialSites:
+    """These replace the curated asset registry. It shipped with six Gujarat
+    plants while the pipeline polled Telangana, so every fire reported a
+    "nearest facility" 700 km away — a hand-seeded list can only cover the
+    area someone thought to seed."""
+
+    REFINERY = {
+        "type": "way", "tags": {"industrial": "refinery", "name": "Manuguru Refinery"},
+        "geometry": [
+            {"lat": 21.1800, "lon": 72.8340}, {"lat": 21.1800, "lon": 72.8360},
+            {"lat": 21.1810, "lon": 72.8360}, {"lat": 21.1810, "lon": 72.8340},
+        ],
+    }
+    ESTATE_AROUND_FIRE = {
+        "type": "way", "tags": {"landuse": "industrial"},
+        "geometry": [
+            {"lat": 21.1700, "lon": 72.8300}, {"lat": 21.1700, "lon": 72.8400},
+            {"lat": 21.1800, "lon": 72.8400}, {"lat": 21.1800, "lon": 72.8300},
+        ],
+    }
+
+    def test_a_named_industrial_site_is_reported_with_its_type(self):
+        result = extract_features([self.REFINERY], 21.1738, 72.8345, 1000)
+        site = result.industrial_sites[0]
+        assert site["name"] == "Manuguru Refinery"
+        assert site["type"] == "Oil / Gas"
+        assert site["named"] is True
+
+    def test_specific_tags_beat_the_generic_industrial_landuse(self):
+        """A refinery tagged both ways must not read as a plain estate."""
+        both = {**self.REFINERY, "tags": {"industrial": "refinery", "landuse": "industrial"}}
+        result = extract_features([both], 21.1738, 72.8345, 1000)
+        assert result.industrial_sites[0]["type"] == "Oil / Gas"
+
+    def test_an_unnamed_parcel_is_reported_as_unnamed(self):
+        result = extract_features([self.ESTATE_AROUND_FIRE], 21.1738, 72.8345, 1000)
+        site = result.industrial_sites[0]
+        assert site["named"] is False
+        assert "Unnamed" in site["name"]
+
+    def test_a_site_containing_the_fire_outranks_a_nearer_neighbour(self):
+        """Inside the perimeter is categorically stronger than 80m away."""
+        result = extract_features(
+            [self.REFINERY, self.ESTATE_AROUND_FIRE], 21.1738, 72.8345, 1000
+        )
+        assert result.industrial_sites[0]["inside"] is True
+
+    def test_distance_is_metres_from_the_fire(self):
+        result = extract_features([self.REFINERY], 21.1738, 72.8345, 1000)
+        assert 400 < result.industrial_sites[0]["distance_m"] < 900
+
+    def test_non_industrial_elements_are_not_listed(self):
+        school = {"type": "node", "lat": 21.1740, "lon": 72.8345,
+                  "tags": {"amenity": "school", "name": "Zilla School"}}
+        assert extract_features([school], 21.1738, 72.8345, 1000).industrial_sites == []

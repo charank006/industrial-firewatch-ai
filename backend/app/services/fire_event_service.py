@@ -33,7 +33,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.models import Facility, FireDetection, FireEvent, detection_identity
+from app.models.models import FireDetection, FireEvent, detection_identity
 from app.services.firms_service import FireDetection as FirmsDetection
 
 logger = logging.getLogger(__name__)
@@ -273,36 +273,6 @@ async def _recompute_event_aggregates(session: AsyncSession, event: FireEvent) -
     event.analysis_status = "pending"
 
 
-async def attach_nearest_facility(session: AsyncSession, event: FireEvent) -> None:
-    """KNN lookup against the curated registry."""
-    row = (
-        await session.execute(
-            text(
-                """
-                SELECT id,
-                       ST_Distance(
-                           geometry::geography,
-                           ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography) AS distance_m
-                FROM facilities
-                ORDER BY geometry <-> ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
-                LIMIT 1
-                """
-            ),
-            {"lon": event.longitude, "lat": event.latitude},
-        )
-    ).mappings().first()
-
-    # A hit beyond FACILITY_ATTACH_MAX_KM is not a neighbour, and reporting it
-    # as one makes the dashboard read as though an unrelated plant were
-    # implicated. Leave the event unassigned instead.
-    if row and float(row["distance_m"]) <= settings.FACILITY_ATTACH_MAX_KM * 1000:
-        event.nearest_facility_id = row["id"]
-        event.nearest_facility_distance_m = round(float(row["distance_m"]), 1)
-    else:
-        event.nearest_facility_id = None
-        event.nearest_facility_distance_m = None
-
-
 async def process_detections(
     session: AsyncSession, detections: Sequence[FirmsDetection]
 ) -> IngestResult:
@@ -354,35 +324,9 @@ async def process_detections(
 
     for event in touched.values():
         await _recompute_event_aggregates(session, event)
-        await attach_nearest_facility(session, event)
 
     await session.flush()
     return result
-
-
-async def seed_facilities(session: AsyncSession, facilities: Iterable[Dict[str, Any]]) -> int:
-    """Upsert the curated asset registry. Idempotent."""
-    count = 0
-    for item in facilities:
-        payload = {
-            **{k: v for k, v in item.items() if k not in {"lat", "lng", "last_detected"}},
-            "latitude": item["lat"],
-            "longitude": item["lng"],
-            "geometry": _point_wkt(item["lng"], item["lat"]),
-        }
-        if item.get("last_detected"):
-            payload["last_detected"] = datetime.datetime.fromisoformat(
-                item["last_detected"].replace("Z", "+00:00")
-            )
-
-        statement = pg_insert(Facility).values(payload)
-        statement = statement.on_conflict_do_update(
-            index_elements=[Facility.id],
-            set_={k: statement.excluded[k] for k in payload if k != "id"},
-        )
-        await session.execute(statement)
-        count += 1
-    return count
 
 
 async def mark_stale_events_contained(session: AsyncSession) -> int:

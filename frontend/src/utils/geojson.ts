@@ -51,7 +51,7 @@ export function facilitiesToGeoJSON(facilities: IndustrialFacility[]): GeoJSONFe
         name: f.name,
         type: f.type,
         status: f.status,
-        baselineFRP: f.baselineFRP,
+        nearestDistanceM: f.nearestDistanceM,
         currentFRP: f.currentFRP,
         location: f.location,
       },

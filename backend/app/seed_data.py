@@ -81,15 +81,7 @@ EMERGENCY_CONTACTS_DB = [
 
 RECIPIENT_RECORDS_DB: list[dict] = []
 
-# Curated industrial asset registry. Mirrors frontend/src/data/mockFacilities.ts.
-# Phase 2 seeds these into a PostGIS `facilities` table; Phase 4 enriches them
-# with OSM tags. Deliberately NOT derived from OSM - real operations systems
-# keep a curated registry, and OSM industrial polygons are unnamed/unreliable.
-FACILITIES_DB = [
-    {"id": "FAC-001", "name": "Surat Petrochemicals Complex", "type": "Refinery", "lat": 21.1702, "lng": 72.8311, "location": "Surat Industrial Zone, Gujarat", "status": "ANOMALY_DETECTED", "baseline_frp": 15.4, "current_frp": 184.6, "last_detected": "2026-08-27T16:12:00Z", "total_events_past_90_days": 14, "emergency_contact": "+91-261-2894-100", "risk_buffer_radius_km": 2.5},
-    {"id": "FAC-002", "name": "Hazira LNG Terminal & Power Plant", "type": "LNG Terminal", "lat": 21.1118, "lng": 72.6358, "location": "Hazira Coastal Belt, Gujarat", "status": "ELEVATED", "baseline_frp": 45.0, "current_frp": 82.3, "last_detected": "2026-08-27T14:45:00Z", "total_events_past_90_days": 48, "emergency_contact": "+91-261-2850-200", "risk_buffer_radius_km": 3.0},
-    {"id": "FAC-003", "name": "Dahej Petrochemical Industrial Estate", "type": "Chemical Complex", "lat": 21.7051, "lng": 72.5292, "location": "Dahej SEZ, Bharuch, Gujarat", "status": "NORMAL", "baseline_frp": 32.1, "current_frp": 30.5, "last_detected": "2026-08-27T13:00:00Z", "total_events_past_90_days": 62, "emergency_contact": "+91-2641-252-300", "risk_buffer_radius_km": 2.0},
-    {"id": "FAC-004", "name": "Vapi Chemical Manufacturing Complex", "type": "Chemical Complex", "lat": 20.3721, "lng": 72.9038, "location": "Vapi GIDC, Valsad, Gujarat", "status": "ANOMALY_DETECTED", "baseline_frp": 8.2, "current_frp": 112.7, "last_detected": "2026-08-27T15:40:00Z", "total_events_past_90_days": 5, "emergency_contact": "+91-260-2431-400", "risk_buffer_radius_km": 1.5},
-    {"id": "FAC-005", "name": "Jamnagar Export Refinery Complex", "type": "Refinery", "lat": 22.4707, "lng": 70.0577, "location": "Moti Khavdi, Jamnagar, Gujarat", "status": "NORMAL", "baseline_frp": 120.0, "current_frp": 118.4, "last_detected": "2026-08-27T14:20:00Z", "total_events_past_90_days": 120, "emergency_contact": "+91-288-2661-500", "risk_buffer_radius_km": 5.0},
-    {"id": "FAC-006", "name": "Bharuch Fertilizer & Chemical Complex", "type": "Fertilizer Plant", "lat": 21.7000, "lng": 72.9900, "location": "Narmadanagar, Bharuch, Gujarat", "status": "NORMAL", "baseline_frp": 12.0, "current_frp": 14.2, "last_detected": "2026-08-27T11:10:00Z", "total_events_past_90_days": 18, "emergency_contact": "+91-2642-247-600", "risk_buffer_radius_km": 2.0},
-]
+# The curated facility registry was removed: it could only ever describe the
+# region it was seeded for, and shipped with six Gujarat plants while the
+# pipeline polled Telangana. "Nearest industrial site" is derived from the OSM
+# enrichment instead - see osm/features.py industrial_sites.

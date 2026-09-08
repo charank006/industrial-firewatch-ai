@@ -19,13 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database.connection import get_db
-from app.seed_data import FACILITIES_DB
 from app.services import firms_service, weather_service
 from app.services.analysis_service import drain_pending
 from app.services.fire_event_service import (
     mark_stale_events_contained,
     process_detections,
-    seed_facilities,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -204,17 +202,6 @@ def _detection_json(detection: firms_service.FireDetection) -> Dict[str, Any]:
         "confidence_pct": detection.confidence_pct,
         "day_night": detection.day_night,
     }
-
-
-@router.post("/seed-facilities")
-async def seed_facility_registry(
-    db: AsyncSession = Depends(get_db),
-    x_admin_token: Optional[str] = Header(None),
-) -> Dict[str, Any]:
-    """Load the curated industrial asset registry. Idempotent (upsert)."""
-    warning = require_admin(x_admin_token)
-    count = await seed_facilities(db, FACILITIES_DB)
-    return {"warning": warning, "facilities_seeded": count}
 
 
 @router.post("/ingest")

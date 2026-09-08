@@ -153,8 +153,8 @@ export const GISMap: React.FC<{ height?: string }> = ({ height = 'h-full' }) => 
                     </div>
                     <p className="text-[10px] text-slate-400">{fac.location}</p>
                     <div className="flex justify-between text-[10px] pt-1">
-                      <span>Baseline: {fac.baselineFRP} MW</span>
-                      <span>Current: <strong className="text-[#E9A23B]">{fac.currentFRP} MW</strong></span>
+                      <span>{fac.eventCount} fire(s) within 1 km</span>
+                      <span>Peak: <strong className="text-[#E9A23B]">{fac.currentFRP} MW</strong></span>
                     </div>
                   </div>
                 </Popup>

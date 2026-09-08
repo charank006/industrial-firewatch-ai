@@ -9,13 +9,6 @@ export type EventClassification =
   | 'Urban'
   | 'Unknown Anomaly';
 
-export type FacilityType =
-  | 'Refinery'
-  | 'Power Plant'
-  | 'Chemical Complex'
-  | 'LNG Terminal'
-  | 'Fertilizer Plant'
-  | 'Metal Smelter';
 
 export type FacilityStatus = 'NORMAL' | 'ELEVATED' | 'ANOMALY_DETECTED';
 
@@ -71,20 +64,35 @@ export interface ThermalHotspot {
   isNew: boolean;
 }
 
+/**
+ * An industrial site as OpenStreetMap maps it, discovered within 1 km of a
+ * detected fire.
+ *
+ * This replaced a curated registry of six hand-seeded Gujarat plants, which
+ * could only describe the region it was seeded for — once the AOI moved to
+ * Telangana every fire reported a "nearest facility" 700 km away. There is no
+ * stable id for an OSM way across edits, so `id` is a name+type key and a
+ * genuine site is often unnamed (`named: false`).
+ */
 export interface IndustrialFacility {
   id: string;
   name: string;
-  type: FacilityType;
+  /** Free text from OSM tags, e.g. "Oil / Gas", "Quarry" — not a closed set. */
+  type: string;
   lat: number;
   lng: number;
   location: string;
   status: FacilityStatus;
-  baselineFRP: number; // MW
-  currentFRP: number;  // MW
+  /** False when OSM has the parcel but no name for it. */
+  named: boolean;
+  /** Closest approach to any fire that saw this site. */
+  nearestDistanceM: number | null;
+  /** Highest FRP among the fires near this site. */
+  currentFRP: number;
   lastDetected: string;
-  totalEventsPast90Days: number;
-  emergencyContact: string;
-  riskBufferRadiusKm: number;
+  /** Fires detected within 1 km of this site. */
+  eventCount: number;
+  fireEventIds: string[];
 }
 
 export interface AlertItem {

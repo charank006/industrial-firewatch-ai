@@ -65,6 +65,37 @@ SPARSE_ELEMENT_THRESHOLD = 25
 LAND_COVER_MIN_FRACTION = 0.20
 
 
+def industrial_site_type(tags: Dict[str, str]) -> Optional[str]:
+    """A readable type for an industrial OSM element, or None if it is not one.
+
+    Ordered most-specific first: a refinery tagged both `industrial=refinery`
+    and `landuse=industrial` should read as a refinery, not as a generic
+    industrial parcel.
+    """
+    industrial = tags.get("industrial")
+    if industrial in {"oil", "gas", "petroleum", "refinery"}:
+        return "Oil / Gas"
+    if tags.get("man_made") in {"petroleum_well", "storage_tank", "gasometer", "flare"}:
+        return "Oil / Gas"
+    if tags.get("power") == "plant":
+        return "Power Plant"
+    if tags.get("power") in {"substation", "generator"}:
+        return "Power Infrastructure"
+    if tags.get("landuse") == "quarry":
+        return "Quarry"
+    if tags.get("man_made") == "works" or tags.get("building") in {"industrial", "factory"}:
+        return "Works / Factory"
+    if tags.get("building") == "warehouse":
+        return "Warehouse"
+    if industrial:
+        return industrial.replace("_", " ").title()
+    if tags.get("landuse") == "industrial":
+        return "Industrial Estate"
+    if tags.get("landuse") == "brownfield":
+        return "Brownfield"
+    return None
+
+
 def matches(tags: Dict[str, str], spec: Dict[str, set]) -> bool:
     return any(tags.get(key) in values for key, values in spec.items())
 
@@ -103,6 +134,13 @@ class SurroundingsFeatures:
     # already returns name and geometry for each; keeping only the tally
     # forced the dashboard to invent contacts to fill the panel.
     emergency_facilities: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Industrial sites near the fire, nearest first. These replace the curated
+    # asset registry: a hand-seeded list can only ever cover the AOI someone
+    # thought of, and the registry shipped with six Gujarat plants while the
+    # pipeline polled Telangana, so every fire reported a "nearest facility"
+    # 700 km away.
+    industrial_sites: List[Dict[str, Any]] = field(default_factory=list)
 
     road_length_km: float = 0.0
 
@@ -288,6 +326,22 @@ def extract_features(
             features.fire_stations += 1
             kind = "fire_station"
 
+        site_type = industrial_site_type(tags)
+        if site_type is not None:
+            site_geometries = polygons if polygons else ([point] if point is not None else [])
+            site_distance = geo.distance_to_origin_m(site_geometries)
+            features.industrial_sites.append(
+                {
+                    "type": site_type,
+                    # Industrial polygons are very often unnamed in OSM. Saying
+                    # so is more useful than omitting a site that is there.
+                    "name": tags.get("name:en") or tags.get("name") or f"Unnamed {site_type}",
+                    "named": bool(tags.get("name:en") or tags.get("name")),
+                    "distance_m": round(site_distance, 1) if site_distance is not None else None,
+                    "inside": geo.contains_origin(site_geometries),
+                }
+            )
+
         if kind is not None:
             # `polygons` / `point` are the already-projected geometries for
             # this element, in a frame whose origin is the fire itself.
@@ -354,6 +408,15 @@ def extract_features(
     features.land_cover = derive_land_cover(features, radius_m)
     features.emergency_facilities.sort(
         key=lambda item: (item["distance_m"] is None, item["distance_m"] or 0.0)
+    )
+    # A site containing the fire outranks one merely close to it: "inside the
+    # perimeter" is categorically different from "80 m away".
+    features.industrial_sites.sort(
+        key=lambda item: (
+            not item["inside"],
+            item["distance_m"] is None,
+            item["distance_m"] or 0.0,
+        )
     )
     features.location_name = derive_location_name(places)
     features.geometry_quality = "approximate" if used_bounds_fallback else "exact"

@@ -8,8 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.fires import format_local_time, provisional_severity
 from app.main import app
-from app.seed_data import FACILITIES_DB
-from app.services.fire_event_service import process_detections, seed_facilities
+from app.services.fire_event_service import process_detections
 from tests.conftest import make_detection
 
 BASE = datetime.datetime(2026, 9, 8, 4, 6, tzinfo=datetime.timezone.utc)
@@ -58,7 +57,6 @@ class TestFiresEndpoint:
         assert body["total"] == 0 and body["fires"] == []
 
     async def test_serialised_event_carries_the_adapter_contract(self, client, db):
-        await seed_facilities(db, FACILITIES_DB)
         await process_detections(db, [make_detection(*SURAT, BASE, frp=184.6)])
 
         fire = (await client.get("/api/fires")).json()["fires"][0]
@@ -201,11 +199,20 @@ class TestFiresEndpoint:
 
 
 class TestFacilitiesAndSummary:
-    async def test_facilities_listed(self, client, db):
-        await seed_facilities(db, FACILITIES_DB)
+    async def test_facilities_come_from_osm_not_a_seeded_registry(self, client, db):
+        """With no enrichment yet there are no sites - and that is the point.
+        The old registry always returned its six Gujarat plants regardless of
+        where the pipeline was actually looking."""
         body = (await client.get("/api/facilities")).json()
-        assert body["total"] == 6
-        assert {f["id"] for f in body["facilities"]} >= {"FAC-001", "FAC-006"}
+        assert body["source"] == "openstreetmap"
+        assert body["total"] == 0
+        assert body["facilities"] == []
+
+    async def test_the_facilities_payload_states_its_coverage_limit(self, client):
+        """Many industrial parcels are unnamed or unmapped, so the list is a
+        lower bound and must not read as a complete asset register."""
+        body = (await client.get("/api/facilities")).json()
+        assert "lower bound" in body["caveat"]
 
     async def test_dashboard_summary_counts(self, client, db):
         await process_detections(

@@ -242,7 +242,7 @@ async def build_feature_vector(
             # Named hospitals/schools/fire stations with distances. Carried so
             # the impact view can name real facilities instead of inventing
             # contacts; the scorer ignores it.
-            "emergency_facilities",
+            "emergency_facilities", "industrial_sites",
         ):
             if key in surroundings:
                 features[key] = surroundings[key]

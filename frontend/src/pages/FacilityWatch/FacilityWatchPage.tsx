@@ -1,5 +1,5 @@
 import React from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Factory } from 'lucide-react';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
@@ -7,6 +7,7 @@ import { useIntelligence } from '../../context/IntelligenceContext';
 export const FacilityWatchPage: React.FC = () => {
   const { facilities, selectedFacility, setSelectedFacility, selectFacilityById, isLoading } =
     useIntelligence();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const facilityParamId = searchParams.get('facilityId');
 
@@ -24,7 +25,16 @@ export const FacilityWatchPage: React.FC = () => {
   if (!activeFac) {
     return (
       <div className="min-h-screen bg-[#050A12] p-6 font-mono text-xs text-[#A7B4C5]">
-        {isLoading ? 'Loading facility registry…' : 'No facilities in the registry.'}
+        {isLoading ? (
+          'Loading industrial sites…'
+        ) : (
+          <span className="leading-relaxed">
+            No industrial site is mapped within 1 km of any detected fire yet.
+            <br />
+            Sites are discovered from the OpenStreetMap enrichment, so this fills in as events
+            are analysed — and stays empty where OSM has not mapped the area.
+          </span>
+        )}
       </div>
     );
   }
@@ -41,12 +51,12 @@ export const FacilityWatchPage: React.FC = () => {
             </h1>
           </div>
           <p className="text-xs text-[#A7B4C5] mt-1">
-            CRITICAL INDUSTRIAL INFRASTRUCTURE THERMAL MONITORING
+INDUSTRIAL SITES MAPPED IN OPENSTREETMAP WITHIN 1 KM OF A DETECTED FIRE
           </p>
         </div>
 
         <div className="text-xs font-mono text-[#16A9D9] bg-[#07101B] px-3 py-1.5 border border-[#203246] rounded">
-          MONITORING {facilities.length} REGISTRY ASSETS
+          {facilities.length} SITE{facilities.length === 1 ? '' : 'S'} FROM OPENSTREETMAP
         </div>
       </div>
 
@@ -55,7 +65,7 @@ export const FacilityWatchPage: React.FC = () => {
         {/* Facilities List (4 cols) */}
         <div className="lg:col-span-4 bg-[#07101B] border border-[#203246] rounded-xl p-4 space-y-3 max-h-[700px] overflow-y-auto font-mono text-xs">
           <span className="text-xs font-semibold text-[#16A9D9] uppercase tracking-wider block border-b border-[#203246] pb-2">
-            INDUSTRIAL ASSETS REGISTRY
+            INDUSTRIAL SITES NEAR FIRES
           </span>
 
           <div className="space-y-2">
@@ -89,8 +99,10 @@ export const FacilityWatchPage: React.FC = () => {
                   <p className="text-[11px] text-[#A7B4C5] mt-1 truncate">{fac.location}</p>
 
                   <div className="flex justify-between items-center text-[10px] text-slate-300 pt-2 border-t border-[#203246] mt-2">
-                    <span>Baseline: {fac.baselineFRP} MW</span>
-                    <span className="font-bold text-[#FFB020]">Current: {fac.currentFRP} MW</span>
+                    <span>
+                      {fac.eventCount} fire{fac.eventCount === 1 ? '' : 's'} within 1 km
+                    </span>
+                    <span className="font-bold text-[#FFB020]">Peak {fac.currentFRP} MW</span>
                   </div>
                 </div>
               );
@@ -120,22 +132,51 @@ export const FacilityWatchPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              {/* Every figure here is observed: fires detected near the site
+                  and how close they came. A baseline FRP, a risk radius and an
+                  emergency contact were all seeded constants with nothing
+                  behind them, and OSM supplies none of the three. */}
               <div className="p-2.5 bg-[#050A12] border border-[#203246] rounded">
-                <span className="text-[9px] text-[#A7B4C5] block uppercase">BASELINE FRP</span>
-                <span className="text-sm font-bold text-[#16A9D9]">{activeFac.baselineFRP} MW</span>
+                <span className="text-[9px] text-[#A7B4C5] block uppercase">Fires within 1 km</span>
+                <span className="text-sm font-bold text-[#16A9D9]">{activeFac.eventCount}</span>
               </div>
               <div className="p-2.5 bg-[#050A12] border border-[#203246] rounded">
-                <span className="text-[9px] text-[#A7B4C5] block uppercase">CURRENT FRP</span>
+                <span className="text-[9px] text-[#A7B4C5] block uppercase">Peak FRP nearby</span>
                 <span className="text-sm font-bold text-[#FFB020]">{activeFac.currentFRP} MW</span>
               </div>
               <div className="p-2.5 bg-[#050A12] border border-[#203246] rounded">
-                <span className="text-[9px] text-[#A7B4C5] block uppercase">RISK RADIUS</span>
-                <span className="text-sm font-bold text-[#28C76F]">{activeFac.riskBufferRadiusKm} KM</span>
+                <span className="text-[9px] text-[#A7B4C5] block uppercase">Closest approach</span>
+                <span className="text-sm font-bold text-[#28C76F]">
+                  {activeFac.nearestDistanceM === null
+                    ? '—'
+                    : activeFac.nearestDistanceM === 0
+                    ? 'inside site'
+                    : `${Math.round(activeFac.nearestDistanceM)} m`}
+                </span>
               </div>
               <div className="p-2.5 bg-[#050A12] border border-[#203246] rounded">
-                <span className="text-[9px] text-[#A7B4C5] block uppercase">EMERGENCY CONTACT</span>
-                <span className="text-xs font-bold text-slate-200">{activeFac.emergencyContact}</span>
+                <span className="text-[9px] text-[#A7B4C5] block uppercase">OSM name</span>
+                <span className="text-xs font-bold text-slate-200">
+                  {activeFac.named ? 'Mapped' : 'Unnamed parcel'}
+                </span>
               </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-[#07101B] border border-[#203246] rounded-xl space-y-2 font-mono text-xs">
+            <span className="text-[10px] text-[#16A9D9] uppercase tracking-widest font-bold">
+              Detections that put this site on the list
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {activeFac.fireEventIds.map((fireId) => (
+                <button
+                  key={fireId}
+                  onClick={() => navigate(`/fire/${fireId}`)}
+                  className="px-2 py-1 rounded border border-[#203246] text-[#16A9D9] hover:bg-[#0B1420]"
+                >
+                  {fireId}
+                </button>
+              ))}
             </div>
           </div>
 
