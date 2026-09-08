@@ -81,7 +81,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [layers, setLayers] = useState<GISLayerVisibility>(initialLayers);
-  const [mapMode, setMapMode] = useState<MapMode>('dark');
+  const [mapMode, setMapMode] = useState<MapMode>('satellite'); // DEFAULT TO SATELLITE IMAGERY MAP
   const [timelineIndex, setTimelineIndex] = useState<number>(MOCK_HOTSPOTS.length - 1);
 
   // Dynamic Filtering Logic

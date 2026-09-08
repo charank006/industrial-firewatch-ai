@@ -25,7 +25,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     mapMode,
   } = useIntelligence();
 
-  // Initialize MapLibre Map
+  // Initialize MapLibre Map with Satellite Imagery + Clean Vector Dark Basemap
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
@@ -40,26 +40,31 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       style: {
         version: 8,
         sources: {
-          'carto-dark': {
+          'clean-dark-basemap': {
             type: 'raster',
-            tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],
+            tiles: [
+              'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+            ],
             tileSize: 256,
-            attribution: '&copy; CARTO &copy; OpenStreetMap',
+            attribution: '&copy; Esri &copy; OpenStreetMap',
           },
           'esri-satellite': {
             type: 'raster',
             tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
             tileSize: 256,
-            attribution: '&copy; Esri',
+            attribution: '&copy; Esri World Imagery',
           },
         },
         layers: [
           {
             id: 'basemap-dark',
             type: 'raster',
-            source: 'carto-dark',
+            source: 'clean-dark-basemap',
             minzoom: 0,
             maxzoom: 19,
+            layout: {
+              visibility: mapMode === 'dark' ? 'visible' : 'none',
+            },
           },
           {
             id: 'basemap-satellite',
@@ -68,13 +73,13 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             minzoom: 0,
             maxzoom: 19,
             layout: {
-              visibility: mapMode === 'satellite' ? 'visible' : 'none',
+              visibility: mapMode === 'satellite' ? 'visible' : 'visible', // Default Satellite Visibility
             },
           },
         ],
       },
       center: initialCenter,
-      zoom: selectedIncident ? 12 : 10,
+      zoom: selectedIncident ? 12.5 : 10.5,
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-left');
@@ -108,8 +113,8 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         type: 'line',
         source: 'industrial-zones-source',
         paint: {
-          'line-color': '#287FB1',
-          'line-width': 1.5,
+          'line-color': '#38bdf8',
+          'line-width': 1.8,
           'line-dasharray': [4, 4],
         },
       });
@@ -128,7 +133,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             'monitoring', '#16A9D9',
             '#16A9D9',
           ],
-          'fill-opacity': 0.12,
+          'fill-opacity': 0.18,
         },
       });
 
@@ -145,7 +150,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             'monitoring', '#16A9D9',
             '#16A9D9',
           ],
-          'line-width': 1.5,
+          'line-width': 2,
           'line-dasharray': [3, 3],
         },
       });
@@ -156,10 +161,10 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         type: 'circle',
         source: 'facilities-source',
         paint: {
-          'circle-color': '#16A9D9',
-          'circle-radius': 7,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#050A12',
+          'circle-color': '#38bdf8',
+          'circle-radius': 8,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': '#ffffff',
         },
       });
 
@@ -182,37 +187,66 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             'interpolate',
             ['linear'],
             ['get', 'frpMw'],
-            10, 6,
-            100, 10,
-            200, 14,
+            10, 7,
+            100, 12,
+            200, 16,
           ],
-          'circle-stroke-width': 2,
+          'circle-stroke-width': 2.5,
           'circle-stroke-color': '#FFFFFF',
-          'circle-opacity': 0.9,
+          'circle-opacity': 0.95,
         },
       });
 
-      // Hotspot Click Event
+      // Interactive Map Popup on Hotspot Click
       map.on('click', 'hotspots-layer', (e: any) => {
         if (!e.features || e.features.length === 0) return;
         const properties = e.features[0].properties;
+        const coords = e.features[0].geometry.coordinates.slice();
+
         if (properties && properties.id) {
           const found = filteredHotspots.find((h) => h.id === properties.id);
           if (found) {
             setSelectedIncident(found);
             setIsDrawerOpen(true);
+
+            new maplibregl.Popup({ className: 'custom-map-popup' })
+              .setLngLat(coords)
+              .setHTML(`
+                <div style="background: #080C14; color: #fff; border: 1px solid rgba(56,189,248,0.4); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px;">
+                  <div style="color: #38bdf8; font-weight: bold; margin-bottom: 4px;">● ${found.id} &bull; ${found.classification.toUpperCase()}</div>
+                  <div><strong>LOCATION:</strong> ${found.locationName}</div>
+                  <div><strong>RADIATIVE POWER:</strong> <span style="color: #f59e0b;">${found.frpMw} MW</span></div>
+                  <div><strong>BRIGHTNESS TEMP:</strong> ${found.brightnessK} K</div>
+                  <div><strong>FACILITY DISTANCE:</strong> ${Math.round(found.facilityDistanceKm * 1000)}m</div>
+                </div>
+              `)
+              .addTo(map);
           }
         }
       });
 
-      // Facility Click Event
+      // Interactive Facility Click Event
       map.on('click', 'facilities-layer', (e: any) => {
         if (!e.features || e.features.length === 0) return;
         const properties = e.features[0].properties;
+        const coords = e.features[0].geometry.coordinates.slice();
+
         if (properties && properties.id) {
           const found = facilities.find((f) => f.id === properties.id);
           if (found) {
             setSelectedFacility(found);
+
+            new maplibregl.Popup({ className: 'custom-map-popup' })
+              .setLngLat(coords)
+              .setHTML(`
+                <div style="background: #080C14; color: #fff; border: 1px solid rgba(56,189,248,0.4); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px;">
+                  <div style="color: #38bdf8; font-weight: bold; margin-bottom: 4px;">🏭 ${found.name}</div>
+                  <div><strong>TYPE:</strong> ${found.type}</div>
+                  <div><strong>BASELINE:</strong> ${found.baselineFRP} MW</div>
+                  <div><strong>STATUS:</strong> <span style="color: ${found.status === 'ANOMALY_DETECTED' ? '#ef4444' : '#10b981'}; font-weight: bold;">${found.status}</span></div>
+                </div>
+              `)
+              .addTo(map);
           }
         }
       });
@@ -237,6 +271,9 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
 
     if (map.getLayer('basemap-satellite')) {
       map.setLayoutProperty('basemap-satellite', 'visibility', mapMode === 'satellite' ? 'visible' : 'none');
+    }
+    if (map.getLayer('basemap-dark')) {
+      map.setLayoutProperty('basemap-dark', 'visibility', mapMode === 'dark' ? 'visible' : 'none');
     }
   }, [mapMode]);
 
@@ -274,11 +311,11 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     }
     if (map.getLayer('risk-zones-fill')) {
       map.setLayoutProperty('risk-zones-fill', 'visibility', layers.riskZones ? 'visible' : 'none');
-      map.setLayoutProperty('risk-zones-line', 'visibility', layers.riskZones ? 'visible' : 'none');
+      map.setLayoutProperty('risk-zones-line', 'visibility', layers.riskZones ? 'visibility' : 'none');
     }
   }, [layers]);
 
-  // Fly to selected incident or facility
+  // Fly to selected incident or facility with smooth camera zoom
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -286,20 +323,23 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     if (selectedIncident) {
       map.flyTo({
         center: [selectedIncident.lng, selectedIncident.lat],
-        zoom: 13,
-        duration: 1200,
+        zoom: 13.5,
+        speed: 1.2,
+        curve: 1.4,
+        duration: 1400,
       });
     } else if (selectedFacility) {
       map.flyTo({
         center: [selectedFacility.lng, selectedFacility.lat],
-        zoom: 12,
-        duration: 1200,
+        zoom: 12.5,
+        speed: 1.2,
+        duration: 1400,
       });
     }
   }, [selectedIncident, selectedFacility]);
 
   return (
-    <div className={`relative w-full ${height} overflow-hidden rounded-lg border border-[#203246] shadow-2xl`}>
+    <div className={`relative w-full ${height} overflow-hidden rounded-lg shadow-2xl`}>
       <div ref={mapContainerRef} className="w-full h-full" />
     </div>
   );

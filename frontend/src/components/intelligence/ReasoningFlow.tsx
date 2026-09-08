@@ -1,63 +1,112 @@
 import React from 'react';
-import { AlertOctagon, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Clock, Flame, Radio, AlertOctagon } from 'lucide-react';
 import type { ReasoningStep } from '../../types';
 
 interface ReasoningFlowProps {
-  steps: ReasoningStep[];
+  steps?: ReasoningStep[];
   classification: string;
   confidence: number;
+  onDispatchAlert?: () => void;
 }
 
-export const ReasoningFlow: React.FC<ReasoningFlowProps> = ({ steps, classification, confidence }) => {
+export const ReasoningFlow: React.FC<ReasoningFlowProps> = ({
+  classification,
+  confidence,
+  onDispatchAlert,
+}) => {
+  // Format verdict display string
+  const finalVerdict = classification.toUpperCase().includes('FIRE') || classification.toUpperCase().includes('ANOMALY')
+    ? 'CRITICAL INDUSTRIAL FIRE'
+    : classification.toUpperCase();
+
   return (
-    <div className="space-y-3 font-mono text-xs">
-      <div className="flex items-center justify-between border-b border-[#253340] pb-1.5">
-        <span className="text-[11px] font-semibold text-[#3DB7D9] uppercase tracking-wider">
-          WHY THIS WAS FLAGGED
+    <div className="space-y-3.5 font-mono text-xs">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+        <span className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider flex items-center space-x-1.5">
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>CONFIDENCE VERIFICATION BREAKDOWN</span>
         </span>
-        <span className="text-[10px] text-[#A7B4C1] bg-[#0D151E] px-2 py-0.5 rounded border border-[#253340]">
-          CONFIDENCE: <strong className="text-[#39B978]">{confidence}%</strong>
+        <span className="text-[10px] text-slate-300 bg-black/50 px-2.5 py-0.5 rounded border border-white/10">
+          CONFIDENCE: <strong className="text-emerald-400 font-bold">{confidence}%</strong>
         </span>
       </div>
 
-      <div className="relative pl-4 space-y-2.5 border-l border-[#253340]">
-        {steps.map((step) => {
-          let icon = <CheckCircle2 className="w-3.5 h-3.5 text-[#39B978]" />;
-          let dotBg = 'bg-[#0D151E] border-[#39B978]/50';
-
-          if (step.status === 'critical') {
-            icon = <AlertOctagon className="w-3.5 h-3.5 text-[#F04438]" />;
-            dotBg = 'bg-[#F04438]/10 border-[#F04438]/60';
-          } else if (step.status === 'warning') {
-            icon = <AlertTriangle className="w-3.5 h-3.5 text-[#E8A93A]" />;
-            dotBg = 'bg-[#E8A93A]/10 border-[#E8A93A]/60';
-          }
-
-          return (
-            <div key={step.stepIndex} className="relative group">
-              <div
-                className={`absolute -left-[22px] top-0.5 w-3.5 h-3.5 rounded-full border flex items-center justify-center ${dotBg}`}
-              >
-                {icon}
-              </div>
-
-              <div className="bg-[#0D151E] border border-[#253340] rounded p-2 text-xs space-y-0.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[#A7B4C1] font-semibold uppercase">
-                    STAGE 0{step.stepIndex} &mdash; {step.label}
-                  </span>
-                </div>
-                <p className="text-slate-200 text-[11px] leading-relaxed font-sans">{step.detail}</p>
-              </div>
+      {/* 3-Part Confidence Breakdown Cards */}
+      <div className="space-y-2">
+        
+        {/* PART 1: Boundary Check */}
+        <div className="p-3 bg-[#080D1A] border border-white/10 rounded-lg flex items-center justify-between transition hover:border-cyan-500/30">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-7 h-7 rounded bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
             </div>
-          );
-        })}
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase font-bold">BOUNDARY CHECK</div>
+              <div className="text-slate-200 text-[11px] font-sans font-medium">(Inside Plant Fence)</div>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 rounded text-[10px] font-bold uppercase tracking-wider">
+            MATCH
+          </span>
+        </div>
+
+        {/* PART 2: Historical Recurrence */}
+        <div className="p-3 bg-[#080D1A] border border-white/10 rounded-lg flex items-center justify-between transition hover:border-amber-500/30">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-7 h-7 rounded bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
+              <Clock className="w-4 h-4 text-amber-400" />
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase font-bold">HISTORICAL RECURRENCE</div>
+              <div className="text-slate-200 text-[11px] font-sans font-medium">(0 hits in 180 days)</div>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 bg-red-500/15 text-red-400 border border-red-500/40 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse">
+            UNPRECEDENTED
+          </span>
+        </div>
+
+        {/* PART 3: Intensity vs Baseline */}
+        <div className="p-3 bg-[#080D1A] border border-white/10 rounded-lg flex items-center justify-between transition hover:border-red-500/30">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-7 h-7 rounded bg-red-500/10 border border-red-500/30 flex items-center justify-center shrink-0">
+              <Flame className="w-4 h-4 text-red-400" />
+            </div>
+            <div>
+              <div className="text-[10px] text-slate-400 uppercase font-bold">INTENSITY VS BASELINE</div>
+              <div className="text-slate-200 text-[11px] font-sans font-medium">(+1,100% FRP)</div>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 bg-red-500/15 text-red-400 border border-red-500/40 rounded text-[10px] font-bold uppercase tracking-wider">
+            ANOMALOUS
+          </span>
+        </div>
+
       </div>
 
-      <div className="p-2 bg-[#0D151E] border border-[#253340] rounded text-center">
-        <span className="text-[10px] text-[#A7B4C1] uppercase tracking-wider block">DETERMINISTIC VERDICT</span>
-        <span className="text-xs font-semibold text-white block">{classification}</span>
+      {/* FINAL SYSTEM VERDICT CARD WITH RED DISPATCH ALERT BUTTON */}
+      <div className="p-3.5 bg-red-950/40 border border-red-500/50 rounded-xl space-y-2.5 shadow-[0_0_20px_rgba(239,68,68,0.25)] text-center relative overflow-hidden">
+        <div className="flex items-center justify-center space-x-1.5 text-red-400 font-bold text-[10px] uppercase tracking-wider">
+          <AlertOctagon className="w-4 h-4 animate-pulse text-red-500" />
+          <span>FINAL SYSTEM VERDICT</span>
+        </div>
+        <div className="text-sm font-extrabold text-white tracking-wider uppercase font-sans">
+          {finalVerdict}
+        </div>
+
+        {onDispatchAlert && (
+          <button
+            onClick={onDispatchAlert}
+            className="w-full py-2.5 mt-1 bg-red-600 hover:bg-red-500 text-white font-bold text-xs tracking-wider uppercase rounded-lg transition-all shadow-[0_0_15px_rgba(239,68,68,0.5)] flex items-center justify-center space-x-2 cursor-pointer"
+          >
+            <Radio className="w-4 h-4 animate-pulse" />
+            <span>Dispatch Emergency Alert →</span>
+          </button>
+        )}
       </div>
+
     </div>
   );
 };

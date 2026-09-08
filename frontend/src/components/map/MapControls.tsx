@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Layers, SlidersHorizontal } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Globe2, Layers, SlidersHorizontal } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 
 export const MapControls: React.FC = () => {
+  const navigate = useNavigate();
   const { layers, toggleLayer, mapMode, setMapMode } = useIntelligence();
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
@@ -25,7 +27,7 @@ export const MapControls: React.FC = () => {
 
           {/* Map Base Mode Switcher */}
           <div className="space-y-1">
-            <span className="text-[10px] text-[#A7B4C1] uppercase font-semibold block">BASEMAP</span>
+            <span className="text-[10px] text-[#A7B4C1] uppercase font-semibold block">BASEMAP & GLOBAL VIEW</span>
             <div className="grid grid-cols-2 gap-1.5 text-xs">
               <button
                 onClick={() => setMapMode('dark')}
@@ -44,6 +46,13 @@ export const MapControls: React.FC = () => {
                 Satellite Imagery
               </button>
             </div>
+            <button
+              onClick={() => navigate('/')}
+              className="w-full py-1.5 px-2 mt-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 font-bold transition text-[11px] flex items-center justify-center space-x-1.5 cursor-pointer shadow-[0_0_8px_rgba(56,189,248,0.2)]"
+            >
+              <Globe2 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>3D Global Earth View →</span>
+            </button>
           </div>
 
           {/* Toggleable Layers */}

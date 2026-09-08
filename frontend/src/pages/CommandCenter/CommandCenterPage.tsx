@@ -8,25 +8,39 @@ import { TimeScrubber } from '../../components/timeline/TimeScrubber';
 
 export const CommandCenterPage: React.FC = () => {
   return (
-    <div className="flex flex-col h-[calc(100vh-5.75rem)] w-full overflow-hidden bg-[#050A12] p-2 space-y-2">
-      {/* Central Command Center Grid */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-2 min-h-0 overflow-hidden relative">
-        {/* Left Operational Situation Rail (~240px) */}
+    <div className="relative h-[calc(100vh-52px)] w-full overflow-hidden bg-[#060910] text-slate-200 font-sans select-none">
+      
+      {/* 1. FULL-BLEED BASEMAP CANVAS */}
+      <div className="absolute inset-0 w-full h-full">
+        <GISMapLibre height="h-full" />
+      </div>
+
+      {/* 2. FLOATING MAP CONTROLS & LEGEND OVERLAYS */}
+      <div className="absolute top-4 left-90 z-20 flex items-center gap-3">
+        <MapControls />
+      </div>
+
+      <div className="absolute top-4 right-104 z-20 hidden xl:block">
+        <MapLegend />
+      </div>
+
+      {/* 3. FLOATING LEFT PANEL: SITUATION RAIL & INCIDENT QUEUE */}
+      <div className="absolute top-4 left-4 bottom-14 w-80 bg-[#0A0E17]/90 backdrop-blur-md border border-white/10 rounded-xl flex flex-col z-20 shadow-2xl overflow-hidden">
         <SituationRail />
+      </div>
 
-        {/* Center MapLibre GIS Workspace Map (~65% space) */}
-        <div className="flex-1 relative flex flex-col min-h-[400px] lg:min-h-0 rounded-lg overflow-hidden border border-[#203246]">
-          <GISMapLibre height="h-full" />
-          <MapControls />
-          <MapLegend />
-        </div>
-
-        {/* Right Reusable Intelligence Drawer (~360px) */}
+      {/* 4. FLOATING RIGHT PANEL: SELECTED INCIDENT INTEL & REASONING */}
+      <div className="absolute top-4 right-4 bottom-14 w-96 bg-[#0A0E17]/90 backdrop-blur-md border border-white/10 rounded-xl flex flex-col z-20 shadow-2xl overflow-hidden">
         <IntelligenceDrawer />
       </div>
 
-      {/* Bottom Temporal Timeline Scrubber */}
-      <TimeScrubber />
+      {/* 5. FLOATING BOTTOM REPLAY SCRUBBER */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30">
+        <div className="bg-[#0A0E17]/90 backdrop-blur-md border border-white/10 px-5 py-2 rounded-full shadow-2xl flex items-center gap-4 text-xs font-mono">
+          <TimeScrubber />
+        </div>
+      </div>
+
     </div>
   );
 };
