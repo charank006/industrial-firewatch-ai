@@ -83,6 +83,21 @@ class Settings(BaseSettings):
     MAX_EVENT_EXTENT_KM: float = 10.0
     MAX_EVENT_DURATION_HOURS: int = 168
 
+    # --- Background scheduling (Phase 7) ---------------------------------
+    SCHEDULER_ENABLED: bool = True
+    # 4 sources x 4 polls/hour = 384 requests/day against a ~5000-per-10-minute
+    # FIRMS limit, so cadence is not the constraint; politeness is.
+    FIRMS_POLL_MINUTES: int = 15
+    # Overpass is the bottleneck (2-20s, sometimes 60), so analysis drains a
+    # small batch often rather than a large batch rarely.
+    ANALYSIS_POLL_MINUTES: int = 2
+    ANALYSIS_BATCH_SIZE: int = 5
+    CONTAINMENT_SWEEP_HOURS: int = 6
+    # Skip the first ingest at boot; useful in development so a restart does
+    # not immediately spend FIRMS quota.
+    SCHEDULER_RUN_ON_STARTUP: bool = False
+    LOG_LEVEL: str = "INFO"
+
     # --- Admin ------------------------------------------------------------
     # Guards POST /api/admin/* so nobody can burn the FIRMS quota.
     ADMIN_API_TOKEN: str = ""

@@ -103,3 +103,58 @@ on day one: FIRMS `day_range` maxes at 10 and true archive access needs a
 manual request form. Until history accumulates, genuine flares will tend to
 score as industrial. The UI reports recurrence as "N in the last D days of
 system history" with a real D rather than implying 180.
+
+---
+
+## 6. Background Scheduling & Operations
+
+Jobs run in-process on the FastAPI event loop via APScheduler, started and
+stopped by the app lifespan. The frontend never drives the pipeline (spec §24).
+
+| Job | Interval | Purpose |
+| :--- | :--- | :--- |
+| `firms_ingest` | 15 min | Poll 4 FIRMS sources, dedupe, cluster into events |
+| `event_analysis` | 2 min | Drain `analysis_status='pending'` through weather + OSM + classifier |
+| `containment_sweep` | 6 h | Mark events with no detection for 24 h as contained |
+
+### Why these settings
+
+- **`max_instances=1`, `coalesce=True`.** Overpass can take a full minute per
+  event, so an analysis pass can outlast its own 2-minute interval. Without
+  these, overlapping runs compete for the same pending rows and multiply load
+  on the service that was already slow.
+- **Small batch, frequent** rather than large batch, rare — a long batch holds
+  a database session open for minutes.
+- **15-minute FIRMS cadence** is ~384 requests/day against a ~5,000-per-10-min
+  limit. Cadence is not the constraint; politeness is.
+- **Failures are recorded, not raised.** A job that raises is logged and
+  dropped by APScheduler. Every ingest writes to `ingest_runs` whether it
+  succeeded or failed, and `/api/system/status` reports that history — because
+  the failure mode that matters is *silence*, where the API keeps serving
+  yesterday's data and nothing looks broken.
+
+### Single-instance assumption
+
+Running more than one uvicorn worker starts **one scheduler per worker**, so
+FIRMS would be polled N times over. For multi-worker deployments set
+`SCHEDULER_ENABLED=false` and run the jobs from their own process.
+
+### Credential handling
+
+The FIRMS `MAP_KEY` is a **URL path segment**, and httpx logs full request URLs
+at INFO — which wrote the key in plaintext into every log file and any pasted
+traceback. Both entry points now set `httpx`/`httpcore` loggers to WARNING.
+This is pinned by a test, because the leak is invisible until someone shares a log.
+
+### Operations CLI
+
+```
+python -m app.workers.cli backfill [days]   # seed history; FIRMS caps at 10
+python -m app.workers.cli ingest            # one ingest pass
+python -m app.workers.cli analyse [limit]   # enrich pending events
+python -m app.workers.cli status            # last ingest result
+```
+
+`backfill` matters for the cold start: recurrence is the strongest
+flare-vs-fire signal and is meaningless until history accumulates. Deeper than
+10 days needs FIRMS's manual archive request form.

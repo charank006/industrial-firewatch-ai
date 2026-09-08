@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import secrets
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -29,16 +30,24 @@ from app.services.fire_event_service import (
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
+ADMIN_UNGUARDED_WARNING = (
+    "ADMIN_API_TOKEN is not set - these endpoints are UNGUARDED. "
+    "Set it before exposing this service; they spend NASA and Overpass quota."
+)
+
 
 def require_admin(x_admin_token: Optional[str]) -> Optional[str]:
     """Guard quota-spending endpoints.
 
     When ADMIN_API_TOKEN is unset these stay open for local development, but
-    the response says so explicitly rather than implying it is secured.
+    the response says so explicitly rather than implying it is secured, and
+    /api/system/status surfaces the same warning on the dashboard.
     """
     if not settings.ADMIN_API_TOKEN:
-        return "ADMIN_API_TOKEN is not set - this endpoint is UNGUARDED. Set it before exposing this service."
-    if x_admin_token != settings.ADMIN_API_TOKEN:
+        return ADMIN_UNGUARDED_WARNING
+    # compare_digest rather than `!=`: token comparison should not leak length
+    # or prefix through timing.
+    if not x_admin_token or not secrets.compare_digest(x_admin_token, settings.ADMIN_API_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid or missing X-Admin-Token")
     return None
 
@@ -253,3 +262,57 @@ async def analyze_pending(
     warning = require_admin(x_admin_token)
     results = await drain_pending(db, limit=limit)
     return {"warning": warning, "analysed": len(results), "results": results}
+
+
+@router.post("/backfill")
+async def run_backfill(
+    day_range: int = Query(10, ge=1, le=10),
+    x_admin_token: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Seed the deepest history FIRMS will serve automatically.
+
+    `day_range` caps at 10; real archive access needs a manual request form.
+    Recurrence - the strongest flare-vs-fire signal - only becomes meaningful
+    once this history exists.
+    """
+    warning = require_admin(x_admin_token)
+    from app.workers.jobs import backfill
+
+    return {"warning": warning, **await backfill(day_range=day_range)}
+
+
+@router.get("/runs")
+async def list_ingest_runs(
+    limit: int = Query(20, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    x_admin_token: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Ingest history - what tells an operator the pipeline has stopped."""
+    warning = require_admin(x_admin_token)
+    from sqlalchemy import select
+
+    from app.models.models import SeedRun
+
+    rows = list(
+        (
+            await db.execute(select(SeedRun).order_by(SeedRun.id.desc()).limit(limit))
+        ).scalars()
+    )
+    return {
+        "warning": warning,
+        "runs": [
+            {
+                "id": r.id,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+                "day_range": r.day_range,
+                "detections_fetched": r.detections_fetched,
+                "detections_inserted": r.detections_inserted,
+                "events_created": r.events_created,
+                "events_updated": r.events_updated,
+                "ok": r.ok,
+                "detail": r.detail,
+            }
+            for r in rows
+        ],
+    }

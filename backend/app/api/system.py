@@ -18,6 +18,8 @@ from app.database.connection import probe_postgis, probe_postgres
 from app.services.firms_service import probe_map_key
 from app.services.osm.client import probe_overpass
 from app.services.weather_service import probe_open_meteo
+from app.workers.jobs import probe_worker
+from app.workers.scheduler import job_status
 
 router = APIRouter(tags=["system"])
 
@@ -65,8 +67,13 @@ async def get_system_status():
     detail rather than a reassuring literal.
     """
     checked_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    pg, gis, firms, meteo, overpass = await asyncio.gather(
-        probe_postgres(), probe_postgis(), probe_map_key(), probe_open_meteo(), probe_overpass()
+    pg, gis, firms, meteo, overpass, worker = await asyncio.gather(
+        probe_postgres(),
+        probe_postgis(),
+        probe_map_key(),
+        probe_open_meteo(),
+        probe_overpass(),
+        probe_worker(),
     )
 
     probes: Dict[str, Dict[str, Any]] = {
@@ -76,7 +83,7 @@ async def get_system_status():
         "open_meteo": {**meteo, "checked_at": checked_at},
         "overpass": {**overpass, "checked_at": checked_at},
         "classifier": _probe_result(False, "Not wired yet (Phase 5)"),
-        "worker": _probe_result(False, "Not wired yet (Phase 7)"),
+        "worker": {**worker, "checked_at": checked_at},
     }
 
     return {
@@ -97,4 +104,12 @@ async def get_system_status():
             "weather_min_baseline_samples": settings.WEATHER_MIN_BASELINE_SAMPLES,
         },
         "aoi": {"bbox": settings.FIRMS_AOI_BBOX, "timezone": settings.AOI_TIMEZONE},
+        "scheduled_jobs": job_status(),
+        # Surfaced on the dashboard, not only in an admin response: an
+        # unguarded quota-spending endpoint should be visible, not discovered.
+        "warnings": (
+            []
+            if settings.ADMIN_API_TOKEN
+            else ["ADMIN_API_TOKEN is not set - /api/admin endpoints are unguarded"]
+        ),
     }
