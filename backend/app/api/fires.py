@@ -9,10 +9,10 @@ camelCase adapter, because this contract has other consumers planned (the ml/
 trainer, the worker) and should not be shaped around one React app's field
 names.
 
-Classification is deliberately absent until Phase 5: rather than inventing a
-class, events report `prediction: null` with an explicit reasoning step saying
-so. Severity is an openly provisional FRP band, labelled as such everywhere it
-appears.
+An event that the background analysis job has not reached yet reports
+`prediction: null` with an explicit reasoning step saying so, rather than
+inventing a class. Its severity is an openly provisional FRP band, flagged
+`severity_is_provisional: true` everywhere it appears.
 """
 
 from __future__ import annotations
@@ -193,8 +193,10 @@ def serialise_event(
             "step_index": 4,
             "label": "Source Classification",
             "detail": (
-                "Not yet available - the probabilistic rule engine lands in Phase 5. "
-                f"Severity shown is a provisional FRP band ({INTERIM_MODEL_VERSION})."
+                "Awaiting enrichment - weather, surroundings and classification are "
+                "attached by the background analysis job (every few minutes). "
+                "Severity shown meanwhile is a provisional FRP band, not a "
+                f"classified result ({INTERIM_MODEL_VERSION})."
             ),
             "status": "neutral",
         },
@@ -256,7 +258,7 @@ def serialise_event(
         "suggested_action": (
             prediction.suggested_action
             if prediction and prediction.suggested_action
-            else "REVIEW REQUIRED: Thermal anomaly detected. Source classification pending."
+            else "AWAITING ANALYSIS: Thermal anomaly detected; source classification pending enrichment."
         ),
     }
 

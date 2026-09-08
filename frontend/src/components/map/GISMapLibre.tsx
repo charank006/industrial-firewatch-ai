@@ -9,6 +9,28 @@ import {
   riskZonesToGeoJSON,
 } from '../../utils/geojson';
 
+/**
+ * Dark basemap tiles.
+ *
+ * Was `basemaps.cartocdn.com/dark_all`, which CARTO moved behind a paid API
+ * key - it still returns HTTP 200, but every tile is stamped "API KEY
+ * REQUIRED", so the map looked broken while nothing errored. Esri's Dark Gray
+ * Canvas needs no key, matches the dashboard's palette, and is the same
+ * provider already serving the satellite layer.
+ *
+ * VITE_MAP_STYLE_URL overrides it - the variable docs/DECISIONS.md always
+ * promised but nothing ever read.
+ */
+const DARK_BASEMAP_URL: string =
+  import.meta.env.VITE_MAP_STYLE_URL ||
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+
+const DARK_LABELS_URL: string =
+  import.meta.env.VITE_MAP_LABELS_URL ||
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
+
+const DARK_BASEMAP_ATTRIBUTION = '&copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors';
+
 export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -55,11 +77,18 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       style: {
         version: 8,
         sources: {
-          'carto-dark': {
+          'basemap-dark-source': {
             type: 'raster',
-            tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],
+            tiles: [DARK_BASEMAP_URL],
             tileSize: 256,
-            attribution: '&copy; CARTO &copy; OpenStreetMap',
+            attribution: DARK_BASEMAP_ATTRIBUTION,
+          },
+          // Place names ship as a separate transparent overlay in Esri's dark
+          // canvas, so the base tiles stay unlabelled without it.
+          'basemap-labels-source': {
+            type: 'raster',
+            tiles: [DARK_LABELS_URL],
+            tileSize: 256,
           },
           'esri-satellite': {
             type: 'raster',
@@ -72,7 +101,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
           {
             id: 'basemap-dark',
             type: 'raster',
-            source: 'carto-dark',
+            source: 'basemap-dark-source',
             minzoom: 0,
             maxzoom: 19,
           },
@@ -84,6 +113,16 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             maxzoom: 19,
             layout: {
               visibility: mapMode === 'satellite' ? 'visible' : 'none',
+            },
+          },
+          {
+            id: 'basemap-labels',
+            type: 'raster',
+            source: 'basemap-labels-source',
+            minzoom: 0,
+            maxzoom: 19,
+            layout: {
+              visibility: mapMode === 'satellite' ? 'none' : 'visible',
             },
           },
         ],
@@ -260,6 +299,11 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
 
     if (map.getLayer('basemap-satellite')) {
       map.setLayoutProperty('basemap-satellite', 'visibility', mapMode === 'satellite' ? 'visible' : 'none');
+    }
+    if (map.getLayer('basemap-labels')) {
+      // Esri's imagery carries its own labelling, so the dark-canvas overlay
+      // would double up on top of it.
+      map.setLayoutProperty('basemap-labels', 'visibility', mapMode === 'satellite' ? 'none' : 'visible');
     }
   }, [mapMode, styleReady]);
 
