@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-base: #05080d;
+    --bg-surface: #0d151e;
+    --bg-surface-elevated: #111b25;
+    --border-subtle: #253340;
+    --border-slate: #304150;
+    --primary-cyan: #3db7d9;
+    --severity-critical: #f04438;
+    --severity-high: #ff6b35;
+    --severity-medium: #e8a93a;
+    --severity-low: #39b978;
+    --text-primary: #f1f4f6;
+    --text-secondary: #a7b4c1;
+    --text-muted: #6f7e8d;
+  }
+
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  }
+}
+
+.bg-radial-vignette {
+  background: radial-gradient(circle at center, transparent 20%, rgba(0, 0, 0, 0.45) 65%, rgba(0, 0, 0, 0.9) 100%);
+}
+
+/* Globe Historical & Operational Incident Marker Animations */
+@keyframes historical-soft-breath {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.35), 0 0 12px rgba(245, 158, 11, 0.15);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.3);
+    box-shadow: 0 0 12px rgba(245, 158, 11, 0.6), 0 0 24px rgba(245, 158, 11, 0.3);
+    opacity: 1;
+  }
+}
+
+.animate-historical-breath {
+  animation: historical-soft-breath 5s ease-in-out infinite;
+}
+
+@keyframes confirmed-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+  }
+  50% {
+    transform: scale(1.4);
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.95);
+  }
+}
+
+.animate-confirmed-pulse {
+  animation: confirmed-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes high-risk-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(249, 115, 22, 0.5);
+  }
+  50% {
+    transform: scale(1.3);
+    box-shadow: 0 0 14px rgba(249, 115, 22, 0.8);
+  }
+}
+
+.animate-high-risk-pulse {
+  animation: high-risk-pulse 2.2s ease-in-out infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #05080d;
+}
+::-webkit-scrollbar-thumb {
+  background: #253340;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #304150;
+}
+
+/* Leaflet & MapLibre Overrides */
+.maplibregl-popup-content {
+  background: #0d151e !important;
+  color: #f1f4f6 !important;
+  border: 1px solid #253340 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7) !important;
+  padding: 10px !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: #0d151e !important;
+}
+
+.maplibregl-ctrl-group {
+  background: #0d151e !important;
+  border: 1px solid #253340 !important;
+  border-radius: 6px !important;
+}
+
+.maplibregl-ctrl-group button {
+  border-bottom: 1px solid #253340 !important;
+}
+
+.maplibregl-ctrl-group button span {
+  filter: invert(1) !important;
+}
