@@ -7,12 +7,20 @@ Every enrichment degrades independently: a dead Overpass still lets weather
 land, and vice versa. An event whose surroundings cannot be fetched is marked
 `surroundings_status='unavailable'` and moves on, which is what stops one bad
 Overpass day from stalling the whole pipeline.
+
+No network call happens inside a write transaction. Each event moves through
+three separate steps - claim (short write, committed), fetch (HTTP only, no
+session), apply (short write, committed) - because Overpass can take a minute
+per event and holding a row lock on `fire_events` for that long blocks every
+other writer, including ingest. Committing per event also means a crash or an
+interrupt costs one event's work rather than the whole batch.
 """
 
 from __future__ import annotations
 
 import datetime
 import logging
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -21,6 +29,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.database.connection import get_sessionmaker
 from app.models.models import (
     FireEvent,
     FirePrediction,
@@ -78,40 +87,69 @@ async def store_cached_surroundings(
     )
 
 
-async def analyse_surroundings(
-    db: AsyncSession,
-    event: FireEvent,
+@dataclass
+class Enrichment:
+    """Everything the network can say about one event.
+
+    Produced with no database session open, then applied in a short
+    transaction. Keeping the two apart is the point: see the module docstring.
+    """
+
+    surroundings: Optional[SurroundingsFeatures] = None
+    element_count: int = 0
+    from_cache: bool = False
+    surroundings_unavailable: bool = False
+    weather: Optional[weather_service.WeatherAnalysis] = None
+    errors: Dict[str, str] = field(default_factory=dict)
+
+
+async def fetch_enrichment(
+    latitude: float,
+    longitude: float,
+    detected_at: Optional[datetime.datetime],
+    cached_surroundings: Optional[Dict[str, Any]] = None,
     radius_m: Optional[int] = None,
     client: Optional[httpx.AsyncClient] = None,
-) -> Optional[SurroundingsFeatures]:
-    """Fetch (or reuse) the 1km OSM context and fold it onto the event."""
-    radius_m = radius_m or settings.OSM_ANALYSIS_RADIUS_M
+) -> Enrichment:
+    """Every outbound HTTP call for one event, and nothing else.
 
-    cached = await load_cached_surroundings(db, event.latitude, event.longitude, radius_m)
-    if cached is not None:
-        features = SurroundingsFeatures(**cached)
-        _apply_surroundings(event, features)
-        return features
+    Takes no session on purpose - this is the slow part (Overpass alone can
+    run to the full 60s timeout) and it must not run inside a transaction.
+    """
+    radius_m = radius_m or settings.OSM_ANALYSIS_RADIUS_M
+    enrichment = Enrichment()
+
+    if cached_surroundings is not None:
+        enrichment.surroundings = SurroundingsFeatures(**cached_surroundings)
+        enrichment.from_cache = True
+    else:
+        try:
+            elements = await overpass.fetch_elements(
+                latitude, longitude, radius_m, client=client
+            )
+            enrichment.surroundings = extract_features(
+                elements, latitude, longitude, radius_m
+            )
+            enrichment.element_count = len(elements)
+        except overpass.OverpassUnavailable as exc:
+            # Circuit breaker open - expected on a bad Overpass day, not an error.
+            logger.info("Surroundings unavailable at %.4f,%.4f: %s", latitude, longitude, exc)
+            enrichment.surroundings_unavailable = True
+            enrichment.errors["surroundings"] = str(exc)
+        except overpass.OverpassError as exc:
+            logger.warning("Overpass failed at %.4f,%.4f: %s", latitude, longitude, exc)
+            enrichment.surroundings_unavailable = True
+            enrichment.errors["surroundings"] = str(exc)
 
     try:
-        elements = await overpass.fetch_elements(
-            event.latitude, event.longitude, radius_m, client=client
+        enrichment.weather = await weather_service.fetch_weather_analysis(
+            latitude, longitude, detected_at, client=client
         )
-    except overpass.OverpassUnavailable as exc:
-        logger.info("Surroundings unavailable for %s: %s", event.id, exc)
-        event.surroundings_status = "unavailable"
-        return None
-    except overpass.OverpassError as exc:
-        logger.warning("Overpass failed for %s: %s", event.id, exc)
-        event.surroundings_status = "unavailable"
-        return None
+    except (httpx.HTTPError, weather_service.WeatherError) as exc:
+        logger.warning("Weather failed at %.4f,%.4f: %s", latitude, longitude, exc)
+        enrichment.errors["weather"] = f"{type(exc).__name__}: {exc}"
 
-    features = extract_features(elements, event.latitude, event.longitude, radius_m)
-    await store_cached_surroundings(
-        db, event.latitude, event.longitude, radius_m, features, len(elements)
-    )
-    _apply_surroundings(event, features)
-    return features
+    return enrichment
 
 
 def _apply_surroundings(event: FireEvent, features: SurroundingsFeatures) -> None:
@@ -123,18 +161,10 @@ def _apply_surroundings(event: FireEvent, features: SurroundingsFeatures) -> Non
     event.surroundings_status = features.osm_coverage
 
 
-async def analyse_weather(
-    db: AsyncSession, event: FireEvent, client: Optional[httpx.AsyncClient] = None
-) -> Optional[weather_service.WeatherAnalysis]:
-    """Attach current conditions and the six-day baseline to an event."""
-    try:
-        analysis = await weather_service.fetch_weather_analysis(
-            event.latitude, event.longitude, event.last_detected, client=client
-        )
-    except (httpx.HTTPError, weather_service.WeatherError) as exc:
-        logger.warning("Weather failed for %s: %s", event.id, exc)
-        return None
-
+async def persist_weather(
+    db: AsyncSession, event: FireEvent, analysis: weather_service.WeatherAnalysis
+) -> None:
+    """Write an already-fetched weather analysis. No network call here."""
     # One observation and one anomaly row per event; re-analysis replaces them.
     await db.execute(
         text("DELETE FROM weather_observations WHERE fire_event_id = :eid"), {"eid": event.id}
@@ -178,7 +208,6 @@ async def analyse_weather(
             baseline_quality=analysis.baseline_quality,
         )
     )
-    return analysis
 
 
 async def classify_event(
@@ -274,19 +303,34 @@ async def classify_event(
     return {"prediction": prediction, "impact": impact, "features": features, "validity": validity}
 
 
-async def analyse_event(
-    db: AsyncSession, event: FireEvent, client: Optional[httpx.AsyncClient] = None
+async def apply_enrichment(
+    db: AsyncSession, event: FireEvent, enrichment: Enrichment
 ) -> Dict[str, Any]:
-    """Run the full enrichment and classification for one event.
+    """Fold fetched data onto the event, classify it, and persist.
 
-    Each stage degrades on its own; classification always runs, because an
-    honest low-confidence `unknown` is more useful than no answer at all.
+    Pure database work - the caller commits. Classification always runs, even
+    with nothing enriched, because an honest low-confidence `unknown` is more
+    useful than no answer at all.
     """
-    event.analysis_status = "analyzing"
-    await db.flush()
+    radius_m = settings.OSM_ANALYSIS_RADIUS_M
+    surroundings = enrichment.surroundings
 
-    surroundings = await analyse_surroundings(db, event, client=client)
-    weather = await analyse_weather(db, event, client=client)
+    if surroundings is not None:
+        if not enrichment.from_cache:
+            await store_cached_surroundings(
+                db,
+                event.latitude,
+                event.longitude,
+                radius_m,
+                surroundings,
+                enrichment.element_count,
+            )
+        _apply_surroundings(event, surroundings)
+    elif enrichment.surroundings_unavailable:
+        event.surroundings_status = "unavailable"
+
+    if enrichment.weather is not None:
+        await persist_weather(db, event, enrichment.weather)
 
     outcome = await classify_event(
         db, event, surroundings.to_dict() if surroundings else None
@@ -303,7 +347,9 @@ async def analyse_event(
         "surroundings_status": event.surroundings_status,
         "land_cover": event.land_cover,
         "location_name": event.location_name,
-        "weather_baseline_quality": weather.baseline_quality if weather else None,
+        "weather_baseline_quality": (
+            enrichment.weather.baseline_quality if enrichment.weather else None
+        ),
         "validity": validity.verdict,
         "validity_pct": validity.confidence_pct,
         "prediction": prediction.prediction,
@@ -330,17 +376,120 @@ async def pending_events(db: AsyncSession, limit: int = 10) -> List[FireEvent]:
     return list(result.scalars())
 
 
-async def drain_pending(db: AsyncSession, limit: int = 10) -> List[Dict[str, Any]]:
-    """Analyse a batch of pending events, sharing one HTTP client."""
-    events = await pending_events(db, limit)
-    if not events:
+async def reclaim_stalled(stall_minutes: Optional[int] = None) -> int:
+    """Return events stranded in 'analyzing' to the queue.
+
+    A worker killed between claim and apply leaves its batch claimed forever,
+    and nothing else drains that state - the events simply disappear from the
+    pipeline. `updated_at` is stamped by the claim, so anything sitting in
+    'analyzing' for longer than a batch could plausibly take was abandoned.
+    """
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        minutes=stall_minutes or settings.ANALYSIS_STALL_MINUTES
+    )
+    async with get_sessionmaker()() as db:
+        result = await db.execute(
+            text(
+                """
+                UPDATE fire_events SET analysis_status = 'pending'
+                 WHERE analysis_status = 'analyzing' AND updated_at < :cutoff
+                RETURNING id
+                """
+            ),
+            {"cutoff": cutoff},
+        )
+        stalled = [row[0] for row in result]
+        await db.commit()
+
+    if stalled:
+        logger.warning("reclaimed %d event(s) stalled in analysis: %s", len(stalled), stalled)
+    return len(stalled)
+
+
+async def claim_pending(limit: int = 10) -> List[Dict[str, Any]]:
+    """Take a batch and commit the claim before any network call.
+
+    Returns plain dicts rather than ORM instances: the objects would outlive
+    their session, and everything the fetch step needs is three scalars.
+    """
+    async with get_sessionmaker()() as db:
+        events = await pending_events(db, limit)
+        claimed = [
+            {
+                "id": event.id,
+                "latitude": event.latitude,
+                "longitude": event.longitude,
+                "last_detected": event.last_detected,
+            }
+            for event in events
+        ]
+        for event in events:
+            event.analysis_status = "analyzing"
+        await db.commit()
+    return claimed
+
+
+async def analyse_claimed(
+    claim: Dict[str, Any], client: Optional[httpx.AsyncClient] = None
+) -> Dict[str, Any]:
+    """Fetch and apply one already-claimed event, committing on its own.
+
+    Three transactions, none of them spanning an HTTP call: read the OSM
+    cache, fetch, then write.
+    """
+    radius_m = settings.OSM_ANALYSIS_RADIUS_M
+
+    async with get_sessionmaker()() as db:
+        cached = await load_cached_surroundings(
+            db, claim["latitude"], claim["longitude"], radius_m
+        )
+
+    enrichment = await fetch_enrichment(
+        claim["latitude"],
+        claim["longitude"],
+        claim["last_detected"],
+        cached_surroundings=cached,
+        radius_m=radius_m,
+        client=client,
+    )
+
+    async with get_sessionmaker()() as db:
+        event = await db.get(FireEvent, claim["id"])
+        if event is None:
+            # Deleted between claim and apply. Nothing to do, nothing broken.
+            return {"fire_event_id": claim["id"], "analysis_status": "missing"}
+        try:
+            summary = await apply_enrichment(db, event, enrichment)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            # Leave it claimed rather than mid-flight; reclaim_stalled will
+            # requeue it, and a failure that repeats is visible in the logs.
+            logger.exception("analysis failed for %s", claim["id"])
+            raise
+    return summary
+
+
+async def drain_pending(limit: int = 10) -> List[Dict[str, Any]]:
+    """Analyse a batch of pending events, sharing one HTTP client.
+
+    Owns its own sessions - a caller cannot hand one in, because the whole
+    point is that no single transaction spans the batch.
+    """
+    await reclaim_stalled()
+
+    claims = await claim_pending(limit)
+    if not claims:
         return []
 
-    results = []
+    results: List[Dict[str, Any]] = []
     async with httpx.AsyncClient(
         timeout=settings.OVERPASS_TIMEOUT_S + 10,
         headers={"User-Agent": settings.HTTP_USER_AGENT},
     ) as client:
-        for event in events:
-            results.append(await analyse_event(db, event, client=client))
+        for claim in claims:
+            try:
+                results.append(await analyse_claimed(claim, client=client))
+            except Exception:  # noqa: BLE001 - one bad event must not end the batch
+                continue
     return results

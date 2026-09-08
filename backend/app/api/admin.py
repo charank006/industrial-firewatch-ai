@@ -251,16 +251,18 @@ async def ingest(
 @router.post("/analyze")
 async def analyze_pending(
     limit: int = Query(5, ge=1, le=50),
-    db: AsyncSession = Depends(get_db),
     x_admin_token: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     """Drain pending events through OSM + weather enrichment.
 
     Highest-FRP first: Overpass is the bottleneck, so the strongest signals
     get enriched before an arbitrary slice of a large backlog.
+
+    Takes no request session: `drain_pending` manages short transactions of
+    its own so the request's does not stay open across minutes of Overpass.
     """
     warning = require_admin(x_admin_token)
-    results = await drain_pending(db, limit=limit)
+    results = await drain_pending(limit=limit)
     return {"warning": warning, "analysed": len(results), "results": results}
 
 

@@ -86,21 +86,20 @@ async def ingest_job(day_range: Optional[int] = None) -> Dict[str, Any]:
 async def analysis_job(limit: Optional[int] = None) -> Dict[str, Any]:
     """Enrich and classify pending events.
 
-    Small batches, run often: Overpass is the bottleneck, and a long batch
-    would hold a database session open for minutes.
+    Small batches, run often: Overpass is the bottleneck. Each event claims,
+    fetches and commits on its own, so no transaction spans a network call.
     """
     batch = limit or settings.ANALYSIS_BATCH_SIZE
-    async with get_sessionmaker()() as session:
-        try:
-            results = await drain_pending(session, limit=batch)
-            await session.commit()
-            if results:
-                logger.info("analysis ok: %d event(s) enriched", len(results))
-            return {"ok": True, "analysed": len(results)}
-        except Exception as exc:  # noqa: BLE001
-            await session.rollback()
-            logger.exception("analysis failed")
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    try:
+        # drain_pending commits per event and holds no transaction across its
+        # HTTP calls, so there is deliberately no session to wrap it in.
+        results = await drain_pending(limit=batch)
+        if results:
+            logger.info("analysis ok: %d event(s) enriched", len(results))
+        return {"ok": True, "analysed": len(results)}
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("analysis failed")
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
 async def containment_job() -> Dict[str, Any]:

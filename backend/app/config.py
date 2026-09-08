@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     # small batch often rather than a large batch rarely.
     ANALYSIS_POLL_MINUTES: int = 2
     ANALYSIS_BATCH_SIZE: int = 5
+    # An event claimed for analysis but never finished was abandoned by a
+    # crashed or killed worker. Comfortably longer than one event's worst case
+    # (Overpass retries across mirrors can run several minutes) so a slow run
+    # is never mistaken for a dead one.
+    ANALYSIS_STALL_MINUTES: int = 20
     CONTAINMENT_SWEEP_HOURS: int = 6
     # Skip the first ingest at boot; useful in development so a restart does
     # not immediately spend FIRMS quota.
