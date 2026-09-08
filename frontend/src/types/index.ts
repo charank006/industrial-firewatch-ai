@@ -54,6 +54,14 @@ export interface ThermalHotspot {
   nearestFacilityId: string;
   nearestFacilityName: string;
   classification: EventClassification;
+  /**
+   * Detection validity, kept deliberately apart from `classification`.
+   * `classification` answers "what kind of fire"; this answers the prior
+   * question "is this a fire at all". Undefined until the analysis job has
+   * reached the event.
+   */
+  validityVerdict?: ValidityDetail['verdict'];
+  validityConfidencePct?: number;
   severity: SeverityLevel;
   historicalOccurrenceCount: number;
   firstSeenDate: string;
@@ -220,8 +228,23 @@ export interface ImpactDetail {
 }
 
 export interface FireAnalysis {
+  validity: ValidityDetail | null;
   weather: WeatherDetail | null;
   surroundings: SurroundingsDetail | null;
   prediction: PredictionDetail | null;
   impact: ImpactDetail | null;
+}
+
+/**
+ * Detection validity — a SEPARATE verdict from source class.
+ * "Is this a fire at all?" vs "what kind of fire is it?"
+ */
+export interface ValidityDetail {
+  verdict: 'REAL_FIRE' | 'UNCERTAIN' | 'LIKELY_FALSE_ALARM';
+  pReal: number;
+  confidencePct: number;
+  concerns: string[];
+  reasoningSteps: ReasoningStep[];
+  modelVersion: string;
+  interpretation: string;
 }

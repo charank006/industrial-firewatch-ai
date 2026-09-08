@@ -8,6 +8,8 @@ import {
   List,
 } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { ValidityBadge } from '../../components/intelligence/ValidityBadge';
+import { facilityDistance } from '../../components/intelligence/formatters';
 
 export const IncidentsPage: React.FC = () => {
   const { filteredHotspots, filters, setFilters, selectIncidentById } = useIntelligence();
@@ -16,7 +18,7 @@ export const IncidentsPage: React.FC = () => {
 
   const handleRowClick = (id: string) => {
     selectIncidentById(id);
-    navigate(`/incidents/${id}`);
+    navigate(`/fire/${id}`);
   };
 
   return (
@@ -31,7 +33,7 @@ export const IncidentsPage: React.FC = () => {
             </h1>
           </div>
           <p className="text-xs text-slate-400 font-mono mt-1">
-            Detected Thermal Anomalies in Gujarat Industrial Corridor
+            Detected Thermal Anomalies — {filters.region}
           </p>
         </div>
 
@@ -106,6 +108,7 @@ export const IncidentsPage: React.FC = () => {
             <thead>
               <tr className="bg-[#0B111A] border-b border-[#243244] text-[#2FA8D8]">
                 <th className="p-3 font-semibold">INCIDENT ID</th>
+                <th className="p-3 font-semibold">VALIDITY</th>
                 <th className="p-3 font-semibold">CLASSIFICATION</th>
                 <th className="p-3 font-semibold">SEVERITY</th>
                 <th className="p-3 font-semibold">LOCATION</th>
@@ -123,6 +126,12 @@ export const IncidentsPage: React.FC = () => {
                   className="hover:bg-[#151F2C] cursor-pointer transition"
                 >
                   <td className="p-3 font-bold text-[#2FA8D8]">{item.id}</td>
+                  <td className="p-3">
+                    <ValidityBadge
+                      verdict={item.validityVerdict}
+                      confidencePct={item.validityConfidencePct}
+                    />
+                  </td>
                   <td className="p-3 font-semibold text-white">{item.classification}</td>
                   <td className="p-3">
                     <span
@@ -136,7 +145,11 @@ export const IncidentsPage: React.FC = () => {
                   <td className="p-3 text-slate-300 max-w-xs truncate">{item.locationName}</td>
                   <td className="p-3 font-bold text-[#E9A23B]">{item.frpMw} MW</td>
                   <td className="p-3 text-[#2FBF71] font-bold">{item.confidence}%</td>
-                  <td className="p-3 text-slate-300">{item.nearestFacilityName} ({item.facilityDistanceKm} km)</td>
+                  <td className="p-3 text-slate-300">
+                    {item.nearestFacilityId
+                      ? `${item.nearestFacilityName} (${facilityDistance(item.nearestFacilityId, item.facilityDistanceKm)})`
+                      : 'Unassigned'}
+                  </td>
                   <td className="p-3 text-right">
                     <button
                       onClick={(e) => {
@@ -174,7 +187,11 @@ export const IncidentsPage: React.FC = () => {
                 </span>
               </div>
               <div>
-                <h3 className="font-semibold text-white text-base group-hover:text-[#2FA8D8] transition">
+                <ValidityBadge
+                  verdict={item.validityVerdict}
+                  confidencePct={item.validityConfidencePct}
+                />
+                <h3 className="mt-1.5 font-semibold text-white text-base group-hover:text-[#2FA8D8] transition">
                   {item.classification}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">{item.locationName}</p>

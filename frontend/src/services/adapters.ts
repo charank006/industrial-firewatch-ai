@@ -28,6 +28,7 @@ import type {
   SeverityLevel,
   SurroundingsDetail,
   ThermalHotspot,
+  ValidityDetail,
   WeatherDetail,
 } from '../types';
 
@@ -54,6 +55,19 @@ const LAND_COVER_VALUES: readonly LandCoverCategory[] = [
 ];
 
 const SEVERITY_VALUES: readonly SeverityLevel[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+
+const VERDICT_VALUES: readonly ValidityDetail['verdict'][] = [
+  'REAL_FIRE',
+  'UNCERTAIN',
+  'LIKELY_FALSE_ALARM',
+];
+
+/** An unrecognised verdict reads as "not assessed" rather than a wrong badge. */
+function verdictOrUndefined(candidate: unknown): ValidityDetail['verdict'] | undefined {
+  return VERDICT_VALUES.includes(candidate as ValidityDetail['verdict'])
+    ? (candidate as ValidityDetail['verdict'])
+    : undefined;
+}
 
 const FACILITY_TYPES: readonly FacilityType[] = [
   'Refinery',
@@ -104,6 +118,10 @@ export function adaptFireEvent(event: ApiFireEvent): ThermalHotspot {
     classification: event.prediction
       ? (CLASS_LABEL[event.prediction] ?? 'Unknown Anomaly')
       : 'Unknown Anomaly',
+    // Validity is a SEPARATE verdict from class and must never be folded into
+    // it: "is this a fire at all" answered before "what kind of fire".
+    validityVerdict: verdictOrUndefined(event.validity?.verdict),
+    validityConfidencePct: event.validity?.confidence_pct,
     severity: oneOf(SEVERITY_VALUES, event.severity, 'MEDIUM'),
     historicalOccurrenceCount: event.recurrence_count,
     firstSeenDate: (event.first_detected ?? timestamp).slice(0, 10),
@@ -147,6 +165,10 @@ export function dateRangeToSince(range: string, now: Date = new Date()): string 
  * applied to anything; wiring it is additive.
  */
 export const REGION_BBOX: Record<string, string> = {
+  // The AOI the ingest worker actually polls FIRMS for
+  // (backend FIRMS_AOI_BBOX). Anything else returns an empty map until the
+  // AOI is widened, so this is the default.
+  'Telangana Active AOI': '77.2,15.8,81.4,19.95',
   'Gujarat Industrial Corridor': '68.0,20.0,75.0,25.0',
   'Permian Petrochemical Zone': '-104.5,29.5,-100.5,33.5',
   'Rhine Industrial Belt': '5.8,49.0,9.5,52.0',
@@ -220,6 +242,20 @@ export function adaptSurroundings(raw: Record<string, any> | null): Surroundings
   };
 }
 
+export function adaptValidity(raw: Record<string, any> | null | undefined): ValidityDetail | null {
+  const verdict = verdictOrUndefined(raw?.verdict);
+  if (!raw || !verdict) return null;
+  return {
+    verdict,
+    pReal: raw.p_real ?? 0,
+    confidencePct: raw.confidence_pct ?? Math.round((raw.p_real ?? 0) * 100),
+    concerns: raw.concerns ?? [],
+    reasoningSteps: (raw.reasoning_steps ?? []).map(adaptReasoningStep),
+    modelVersion: raw.model_version ?? '',
+    interpretation: raw.interpretation ?? '',
+  };
+}
+
 export function adaptPrediction(raw: Record<string, any> | null): PredictionDetail | null {
   if (!raw) return null;
   return {
@@ -257,6 +293,7 @@ export function adaptImpact(raw: Record<string, any> | null): ImpactDetail | nul
 
 export function adaptAnalysis(raw: ApiAnalysis): FireAnalysis {
   return {
+    validity: adaptValidity(raw.prediction?.validity),
     weather: adaptWeather(raw.weather),
     surroundings: adaptSurroundings(raw.surroundings),
     prediction: adaptPrediction(raw.prediction),

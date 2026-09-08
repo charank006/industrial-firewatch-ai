@@ -8,6 +8,7 @@ import {
   History,
   X,
 } from 'lucide-react';
+import { facilityDistance } from './formatters';
 import { useIntelligence } from '../../context/IntelligenceContext';
 import { ReasoningFlow } from './ReasoningFlow';
 import {
@@ -89,7 +90,7 @@ export const IntelligenceDrawer: React.FC = () => {
         <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
           <span className="text-[9px] text-[#A7B4C1] block uppercase">FACILITY DISTANCE</span>
           <span className="text-xs font-bold text-white">
-            {Math.round(selectedIncident.facilityDistanceKm * 1000)}m
+            {facilityDistance(selectedIncident.nearestFacilityId, selectedIncident.facilityDistanceKm)}
           </span>
         </div>
       </div>
@@ -113,7 +114,7 @@ export const IntelligenceDrawer: React.FC = () => {
         <div className="flex justify-between text-[11px] text-[#A7B4C1] pt-1 border-t border-[#253340]">
           <span>PROXIMITY DISTANCE</span>
           <span className="text-[#E8A93A] font-bold">
-            {selectedIncident.facilityDistanceKm} km ({Math.round(selectedIncident.facilityDistanceKm * 1000)}m)
+            {facilityDistance(selectedIncident.nearestFacilityId, selectedIncident.facilityDistanceKm)}
           </span>
         </div>
       </div>

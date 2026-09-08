@@ -80,7 +80,7 @@ const initialLayers: GISLayerVisibility = {
 };
 
 const initialFilters: FilterState = {
-  region: 'Gujarat Industrial Corridor',
+  region: 'Telangana Active AOI',
   eventType: 'ALL',
   severity: 'ALL',
   dateRange: '24h',

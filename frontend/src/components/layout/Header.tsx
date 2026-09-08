@@ -62,9 +62,11 @@ export const Header: React.FC = () => {
             onChange={(e) => setFilters((prev) => ({ ...prev, region: e.target.value }))}
             className="pl-8 pr-3 py-1 bg-[#0A121E] border border-[#1E2C3B] text-slate-200 text-xs rounded-md focus:outline-none focus:border-[#3DB7D9] transition"
           >
+            <option value="Telangana Active AOI">Telangana Active AOI (IN)</option>
             <option value="Gujarat Industrial Corridor">Gujarat Industrial Corridor (IN)</option>
             <option value="Permian Petrochemical Zone">Permian Petrochemical Basin (US)</option>
             <option value="Rhine Industrial Belt">Rhine Industrial Belt (EU)</option>
+            <option value="Global">Global (no bounding box)</option>
           </select>
         </div>
 

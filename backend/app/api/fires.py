@@ -231,6 +231,20 @@ def serialise_event(
         # NASA's own detection confidence - distinct from classification
         # confidence, which does not exist until Phase 5.
         "detection_confidence_pct": event.detection_confidence_pct,
+        # Validity is a SEPARATE verdict from source class and is never merged
+        # into it: "is this a fire" and "what kind of fire" are different
+        # questions with different answers.
+        "validity": (
+            {
+                "verdict": prediction.validity_verdict,
+                "p_real": prediction.validity_p_real,
+                "confidence_pct": int(round((prediction.validity_p_real or 0) * 100)),
+                "concerns": prediction.validity_concerns or [],
+                "model_version": prediction.validity_model_version,
+            }
+            if prediction and prediction.validity_verdict
+            else None
+        ),
         "prediction": prediction.predicted_class if prediction else None,
         "prediction_label": CLASS_LABEL.get(prediction.predicted_class) if prediction else None,
         "classification_confidence_pct": prediction.confidence_pct if prediction else None,
@@ -484,6 +498,22 @@ async def get_prediction(fire_id: str, db: AsyncSession = Depends(get_db)) -> Di
         "data_quality": prediction.data_quality,
         "reasoning_steps": prediction.reasoning_steps,
         "suggested_action": prediction.suggested_action,
+        "validity": {
+            "verdict": prediction.validity_verdict,
+            "p_real": prediction.validity_p_real,
+            "confidence_pct": int(round((prediction.validity_p_real or 0) * 100)),
+            "concerns": prediction.validity_concerns or [],
+            "reasoning_steps": prediction.validity_steps or [],
+            "model_version": prediction.validity_model_version,
+            "interpretation": (
+                "Whether this thermal anomaly is a genuine fire. A FIRMS record is a "
+                "satellite-detected thermal anomaly, not a confirmed fire."
+            ),
+        },
+        "source_caveat": (
+            "Source classification assumes the detection is genuine. Read the validity "
+            "verdict first."
+        ),
         "created_at": prediction.created_at.isoformat(),
         # Spec Rule 8 - the UI must never present this as a determination.
         "interpretation": (

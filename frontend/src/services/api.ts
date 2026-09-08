@@ -101,6 +101,14 @@ export interface ApiFireEvent {
   is_new: boolean;
   reasoning_steps: ApiReasoningStep[];
   suggested_action: string;
+  /** Detection validity - answered separately from, and before, the class. */
+  validity: {
+    verdict: string;
+    p_real: number | null;
+    confidence_pct: number;
+    concerns: string[];
+    model_version: string | null;
+  } | null;
 }
 
 export interface ApiFacility {

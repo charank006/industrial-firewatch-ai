@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { CloudDrizzle, Cpu, Factory, Flame, Globe2, LayoutDashboard, Wind } from 'lucide-react';
+import { useIntelligence } from '../../context/IntelligenceContext';
 
 const CORE_WORKSTATIONS = [
   { path: '/', label: 'Global Earth', icon: Globe2, badge: '3D WebGL' },
@@ -13,6 +14,8 @@ const CORE_WORKSTATIONS = [
 ];
 
 export const Navigation: React.FC = () => {
+  const { filters } = useIntelligence();
+
   return (
     <nav className="h-10 bg-[#060A10] border-b border-[#1E2C3B] px-4 flex items-center justify-between z-20 shrink-0 font-mono text-xs selection:bg-[#3DB7D9]">
       <div className="flex items-center space-x-1 sm:space-x-2 overflow-x-auto scrollbar-none py-1">
@@ -44,7 +47,9 @@ export const Navigation: React.FC = () => {
       <div className="hidden lg:flex items-center space-x-3 text-[11px] text-[#A7B4C1]">
         <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-[#0A121E] border border-[#1E2C3B]">
           <span className="w-1.5 h-1.5 rounded-full bg-[#39B978] animate-pulse" />
-          <span>GUJARAT SECTOR 01</span>
+          {/* The active AOI, not a fixed region: the pipeline's bounding box
+              is configurable and the label drifted from it. */}
+          <span>{filters.region.toUpperCase()}</span>
         </div>
       </div>
     </nav>

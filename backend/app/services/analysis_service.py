@@ -32,6 +32,7 @@ from app.models.models import (
 from app.services import weather_service
 from app.services.classifier.feature_vector import build_feature_vector
 from app.services.classifier.scorer import classify, suggested_action
+from app.services.classifier.validity import assess_validity
 from app.services.impact_service import assess_impact
 from app.services.osm import client as overpass
 from app.services.osm.features import SurroundingsFeatures, extract_features
@@ -191,6 +192,13 @@ async def classify_event(
     """
     features = await build_feature_vector(db, event, surroundings_dict)
 
+    # Validity FIRST: whether this is a fire at all is a different question
+    # from what kind of fire it is, and asking them in the wrong order is how
+    # a dashboard ends up confidently naming the cause of a sun glint.
+    validity = assess_validity(features)
+    features["validity_verdict"] = validity.verdict
+    features["validity_p_real"] = round(validity.p_real, 4)
+
     # First pass to get a class, then impact, then re-score so exposure can
     # escalate severity.
     provisional = classify(features)
@@ -202,6 +210,13 @@ async def classify_event(
     )["risk_level"]
 
     action = suggested_action(prediction.prediction, prediction.severity, features)
+    if not validity.is_assessable:
+        # A detection we believe is probably not a fire must not be handed a
+        # confident source label or a dispatch instruction.
+        action = (
+            "VERIFY DETECTION: this thermal anomaly is more likely a sensor artefact or a "
+            "permanent heat source than a fire. Source classification is shown for reference only."
+        )
 
     await db.execute(
         text("DELETE FROM fire_predictions WHERE fire_event_id = :eid"), {"eid": event.id}
@@ -233,6 +248,11 @@ async def classify_event(
             # Phase 8 could never reconstruct a historical prediction's inputs.
             feature_snapshot=features,
             suggested_action=action,
+            validity_verdict=validity.verdict,
+            validity_p_real=validity.p_real,
+            validity_model_version=validity.model_version,
+            validity_concerns=validity.concerns,
+            validity_steps=validity.reasoning_steps,
         )
     )
     db.add(
@@ -251,7 +271,7 @@ async def classify_event(
             notes=impact["notes"],
         )
     )
-    return {"prediction": prediction, "impact": impact, "features": features}
+    return {"prediction": prediction, "impact": impact, "features": features, "validity": validity}
 
 
 async def analyse_event(
@@ -272,6 +292,7 @@ async def analyse_event(
         db, event, surroundings.to_dict() if surroundings else None
     )
     prediction = outcome["prediction"]
+    validity = outcome["validity"]
 
     event.analysis_status = "complete"
     await db.flush()
@@ -283,6 +304,8 @@ async def analyse_event(
         "land_cover": event.land_cover,
         "location_name": event.location_name,
         "weather_baseline_quality": weather.baseline_quality if weather else None,
+        "validity": validity.verdict,
+        "validity_pct": validity.confidence_pct,
         "prediction": prediction.prediction,
         "label": prediction.label,
         "confidence_pct": prediction.confidence_pct,

@@ -7,6 +7,7 @@ import { AlertsPage } from './pages/Alerts/AlertsPage';
 import { AnalyticsPage } from './pages/Analytics/AnalyticsPage';
 import { CommandCenterPage } from './pages/CommandCenter/CommandCenterPage';
 import { FacilityWatchPage } from './pages/FacilityWatch/FacilityWatchPage';
+import { FireDetailPage } from './pages/FireDetail/FireDetailPage';
 import { IncidentAnalysisPage } from './pages/IncidentAnalysis/IncidentAnalysisPage';
 import { IncidentDetailsPage } from './pages/IncidentDetails/IncidentDetailsPage';
 import { IncidentsPage } from './pages/Incidents/IncidentsPage';
@@ -32,6 +33,7 @@ const AppContent: React.FC = () => {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/command-center" element={<CommandCenterPage />} />
+          <Route path="/fire/:fireId" element={<FireDetailPage />} />
           <Route path="/incident/:incidentId" element={<IncidentAnalysisPage />} />
           <Route path="/incidents/:id" element={<IncidentDetailsPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />

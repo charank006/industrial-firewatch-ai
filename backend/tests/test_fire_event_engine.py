@@ -299,12 +299,24 @@ class TestFacilityRegistry:
         assert event.nearest_facility_id == "FAC-001"
         assert 0 < event.nearest_facility_distance_m < 1000
 
-    async def test_remote_fire_gets_a_distant_facility_not_a_wrong_one(self, db):
+    async def test_a_facility_well_inside_the_cap_is_still_attached(self, db):
+        """30.5 km from FAC-006 - far, but plausibly the same neighbourhood."""
         await seed_facilities(db, FACILITIES_DB)
-        await process_detections(db, [make_detection(23.5, 70.5, BASE)])
+        await process_detections(db, [make_detection(21.47, 72.83, BASE)])
         event = (await db.execute(select(FireEvent))).scalar_one()
-        assert event.nearest_facility_id is not None
-        assert event.nearest_facility_distance_m > 50_000
+        assert event.nearest_facility_id == "FAC-006"
+        assert event.nearest_facility_distance_m < settings.FACILITY_ATTACH_MAX_KM * 1000
+
+    async def test_a_fire_beyond_the_cap_is_left_unassigned(self, db):
+        """The registry is a curated asset list, so "nearest" is not always
+        "near". Naming the closest row regardless of distance reported a fire
+        in Telangana as 764 km from a plant in Gujarat, which reads as though
+        that plant were implicated."""
+        await seed_facilities(db, FACILITIES_DB)
+        await process_detections(db, [make_detection(23.5, 70.5, BASE)])  # 123 km out
+        event = (await db.execute(select(FireEvent))).scalar_one()
+        assert event.nearest_facility_id is None
+        assert event.nearest_facility_distance_m is None
 
 
 class TestContainment:

@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     EXACT_DUP_RADIUS_M: float = 100.0
     # Chaining guards: without these a spreading front walks one event across a
     # whole district, one 1km link at a time, forever.
+    # Beyond this the "nearest facility" is not near anything. The registry is
+    # a curated asset list, so a fire outside every asset's neighbourhood must
+    # read as unassigned rather than as "764 km from a plant in another state".
+    FACILITY_ATTACH_MAX_KM: float = 50.0
     MAX_EVENT_EXTENT_KM: float = 10.0
     MAX_EVENT_DURATION_HOURS: int = 168
 

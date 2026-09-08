@@ -133,6 +133,26 @@ async def build_feature_vector(
         else 0.0
     )
 
+    # Sensor-level fields the validity model needs: the I4/I5 channel pair is
+    # the core fire signature, and scan angle governs how much to trust the
+    # pixel at all.
+    sensor = (
+        await db.execute(
+            text(
+                """
+                SELECT bright_ti4, bright_ti5, bright_t31, scan, track, instrument, satellite,
+                       (SELECT COUNT(DISTINCT satellite) FROM fire_detections
+                         WHERE fire_event_id = :eid) AS distinct_sensors
+                FROM fire_detections
+                WHERE fire_event_id = :eid
+                ORDER BY acquisition_time DESC, id DESC
+                LIMIT 1
+                """
+            ),
+            {"eid": event.id},
+        )
+    ).mappings().first()
+
     features: Dict[str, Any] = {
         # --- identity -----------------------------------------------------
         "fire_event_id": event.id,
@@ -146,6 +166,14 @@ async def build_feature_vector(
         "detection_confidence_pct": event.detection_confidence_pct,
         "day_night": event.day_night,
         "detection_count": event.detection_count,
+        # --- sensor geometry / channels (validity model) -------------------
+        "bright_ti4": sensor["bright_ti4"] if sensor else None,
+        "bright_ti5": sensor["bright_ti5"] if sensor else None,
+        "bright_t31": sensor["bright_t31"] if sensor else None,
+        "scan": sensor["scan"] if sensor else None,
+        "instrument": sensor["instrument"] if sensor else None,
+        "satellite": sensor["satellite"] if sensor else None,
+        "distinct_sensors": sensor["distinct_sensors"] if sensor else 1,
         # --- temporal -----------------------------------------------------
         "duration_hours": round(duration, 2),
         "recurrence_count": await recurrence_count(db, event),

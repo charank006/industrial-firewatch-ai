@@ -292,9 +292,15 @@ async def attach_nearest_facility(session: AsyncSession, event: FireEvent) -> No
         )
     ).mappings().first()
 
-    if row:
+    # A hit beyond FACILITY_ATTACH_MAX_KM is not a neighbour, and reporting it
+    # as one makes the dashboard read as though an unrelated plant were
+    # implicated. Leave the event unassigned instead.
+    if row and float(row["distance_m"]) <= settings.FACILITY_ATTACH_MAX_KM * 1000:
         event.nearest_facility_id = row["id"]
         event.nearest_facility_distance_m = round(float(row["distance_m"]), 1)
+    else:
+        event.nearest_facility_id = None
+        event.nearest_facility_distance_m = None
 
 
 async def process_detections(

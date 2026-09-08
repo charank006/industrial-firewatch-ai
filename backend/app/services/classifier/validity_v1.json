@@ -1,0 +1,55 @@
+{
+  "_comment": [
+    "Detection validity: is this thermal anomaly a real fire, or a sensor",
+    "artefact / permanent industrial heat source?",
+    "",
+    "This answers a DIFFERENT question from the source classifier. Source asks",
+    "'what kind of fire is this', and assumes the detection is genuine. Validity",
+    "asks whether there is a fire at all. Spec Rule 1 is the reason both exist:",
+    "a FIRMS record is a satellite-detected THERMAL ANOMALY, not a confirmed",
+    "fire.",
+    "",
+    "Thresholds calibrated against 74 real Telangana detections, not assumed.",
+    "The single most important finding: I4-I5 thermal contrast splits hard by",
+    "day/night - day median 39.1K (range 27-62), night median 15.8K (range",
+    "13-30) - because the 11um background channel is far cooler at night. One",
+    "fixed threshold would flag every legitimate night detection as false.",
+    "",
+    "This is a transparent heuristic, NOT a validated detector. There is no",
+    "labelled false-positive dataset behind it, so it reports a probability",
+    "with its reasons and never a certainty.",
+    "Recalibrated after a NASA-confidence-0 MODIS pixel scored REAL_FIRE at 0.67: the bias term gave unearned credit, and weak_signal_combo used a strict '< 0.5' that skipped MODIS's neutral 0.5 contrast placeholder."
+  ],
+  "model_name": "validity-v1",
+  "temperature": 1.0,
+  "thermal_contrast_reference_k": {
+    "D": 35.0,
+    "N": 18.0
+  },
+  "bias": 0.0,
+  "weights": {
+    "nasa_confidence": 2.2,
+    "thermal_contrast": 1.5,
+    "frp_magnitude": 0.9,
+    "night_detection": 0.4,
+    "multi_sensor_agreement": 0.7,
+    "off_nadir_penalty": -0.8,
+    "persistent_hotspot": -1.1,
+    "daytime_water_glint_risk": -1.4,
+    "weak_signal_combo": -1.6,
+    "nasa_rejected": -1.5
+  },
+  "verdict_thresholds": {
+    "real_fire": 0.65,
+    "likely_false_alarm": 0.35
+  },
+  "concern_labels": {
+    "low_nasa_confidence": "NASA assigned this detection low confidence",
+    "weak_thermal_contrast": "Thermal contrast is weak for the time of day",
+    "very_low_frp": "Radiative power is near the detection floor",
+    "off_nadir": "Pixel sits far off-nadir, where geolocation and reliability degrade",
+    "persistent_hotspot": "Recurs at this exact location - consistent with permanent infrastructure rather than an episodic fire",
+    "possible_water_glint": "Daytime detection over or beside water - specular sun glint can mimic a thermal anomaly",
+    "single_observation": "Seen by one sensor pass only, with no corroboration"
+  }
+}

@@ -322,6 +322,15 @@ class FirePrediction(Base):
     feature_snapshot = Column(JSONB, nullable=True)
     suggested_action = Column(Text, nullable=True)
 
+    # Detection validity - a DIFFERENT question from source class. Kept in its
+    # own columns so the two verdicts can never be conflated in a query.
+    # REAL_FIRE | UNCERTAIN | LIKELY_FALSE_ALARM
+    validity_verdict = Column(String, nullable=True)
+    validity_p_real = Column(Float, nullable=True)
+    validity_model_version = Column(String, nullable=True)
+    validity_concerns = Column(JSONB, nullable=True)
+    validity_steps = Column(JSONB, nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 

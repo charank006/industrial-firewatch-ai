@@ -11,6 +11,7 @@ import {
 import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { facilityDistance } from '../../components/intelligence/formatters';
 
 export const IncidentAnalysisPage: React.FC = () => {
   const { incidentId } = useParams<{ incidentId: string }>();
@@ -117,7 +118,7 @@ export const IncidentAnalysisPage: React.FC = () => {
               <div className="flex justify-between text-[10px] text-[#A7B4C1]">
                 <span>DISTANCE:</span>
                 <span className="text-[#E8A93A] font-bold">
-                  {Math.round(incident.facilityDistanceKm * 1000)}m ({incident.facilityDistanceKm} km)
+                  {facilityDistance(incident.nearestFacilityId, incident.facilityDistanceKm)}
                 </span>
               </div>
             </div>
