@@ -23,11 +23,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.models import (
     FireEvent,
+    FirePrediction,
+    ImpactAssessment,
     OsmCache,
     WeatherAnomalyRecord,
     WeatherObservation,
 )
 from app.services import weather_service
+from app.services.classifier.feature_vector import build_feature_vector
+from app.services.classifier.scorer import classify, suggested_action
+from app.services.impact_service import assess_impact
 from app.services.osm import client as overpass
 from app.services.osm.features import SurroundingsFeatures, extract_features
 
@@ -175,12 +180,87 @@ async def analyse_weather(
     return analysis
 
 
+async def classify_event(
+    db: AsyncSession, event: FireEvent, surroundings_dict: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """Build the feature vector, score it, and assess impact.
+
+    Runs whatever the state of enrichment: a fire with no OSM and no weather
+    still gets a prediction, it just scores as `unknown` with the confidence
+    penalty its thin inputs deserve.
+    """
+    features = await build_feature_vector(db, event, surroundings_dict)
+
+    # First pass to get a class, then impact, then re-score so exposure can
+    # escalate severity.
+    provisional = classify(features)
+    impact = assess_impact(provisional.prediction, provisional.severity, features)
+    prediction = classify(features, exposure_count=impact["exposure_count"])
+    impact["severity"] = prediction.severity
+    impact["risk_level"] = assess_impact(
+        prediction.prediction, prediction.severity, features
+    )["risk_level"]
+
+    action = suggested_action(prediction.prediction, prediction.severity, features)
+
+    await db.execute(
+        text("DELETE FROM fire_predictions WHERE fire_event_id = :eid"), {"eid": event.id}
+    )
+    await db.execute(
+        text("DELETE FROM impact_assessments WHERE fire_event_id = :eid"), {"eid": event.id}
+    )
+
+    probabilities = prediction.probabilities
+    db.add(
+        FirePrediction(
+            fire_event_id=event.id,
+            predicted_class=prediction.prediction,
+            confidence=prediction.confidence,
+            confidence_pct=prediction.confidence_pct,
+            industrial_probability=probabilities["industrial"],
+            flare_probability=probabilities["flare"],
+            forest_probability=probabilities["forest"],
+            agriculture_probability=probabilities["agriculture"],
+            gas_oil_probability=probabilities["gas_oil"],
+            urban_probability=probabilities["urban"],
+            unknown_probability=probabilities["unknown"],
+            severity=prediction.severity,
+            model_version=prediction.model_version,
+            model_kind=prediction.model_kind,
+            data_quality=prediction.data_quality,
+            reasoning_steps=prediction.reasoning_steps,
+            # Persisted from day one: OSM and weather drift, so without this
+            # Phase 8 could never reconstruct a historical prediction's inputs.
+            feature_snapshot=features,
+            suggested_action=action,
+        )
+    )
+    db.add(
+        ImpactAssessment(
+            fire_event_id=event.id,
+            risk_level=impact["risk_level"],
+            core_radius_m=impact["core_radius_m"],
+            downwind_length_m=impact["downwind_length_m"],
+            wind_speed_ms=impact["wind_speed_ms"],
+            wind_direction_deg=impact["wind_direction_deg"],
+            plume_bearing_deg=impact["plume_bearing_deg"],
+            exposed=impact["exposed"],
+            exposure_count=impact["exposure_count"],
+            potential_pollutants=impact["potential_pollutants"],
+            risk_zones=impact["risk_zones"],
+            notes=impact["notes"],
+        )
+    )
+    return {"prediction": prediction, "impact": impact, "features": features}
+
+
 async def analyse_event(
     db: AsyncSession, event: FireEvent, client: Optional[httpx.AsyncClient] = None
 ) -> Dict[str, Any]:
-    """Run the full enrichment for one event.
+    """Run the full enrichment and classification for one event.
 
-    Each half degrades on its own; the event only fails outright if both do.
+    Each stage degrades on its own; classification always runs, because an
+    honest low-confidence `unknown` is more useful than no answer at all.
     """
     event.analysis_status = "analyzing"
     await db.flush()
@@ -188,7 +268,12 @@ async def analyse_event(
     surroundings = await analyse_surroundings(db, event, client=client)
     weather = await analyse_weather(db, event, client=client)
 
-    event.analysis_status = "complete" if (surroundings or weather) else "failed"
+    outcome = await classify_event(
+        db, event, surroundings.to_dict() if surroundings else None
+    )
+    prediction = outcome["prediction"]
+
+    event.analysis_status = "complete"
     await db.flush()
 
     return {
@@ -198,6 +283,12 @@ async def analyse_event(
         "land_cover": event.land_cover,
         "location_name": event.location_name,
         "weather_baseline_quality": weather.baseline_quality if weather else None,
+        "prediction": prediction.prediction,
+        "label": prediction.label,
+        "confidence_pct": prediction.confidence_pct,
+        "severity": prediction.severity,
+        "risk_level": outcome["impact"]["risk_level"],
+        "model_version": prediction.model_version,
     }
 
 

@@ -28,7 +28,14 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database.connection import get_db
-from app.models.models import Facility, FireDetection, FireEvent
+from app.models.models import (
+    Facility,
+    FireDetection,
+    FireEvent,
+    FirePrediction,
+    ImpactAssessment,
+)
+from app.services.classifier.scorer import CLASS_LABEL
 
 router = APIRouter(tags=["fires"])
 
@@ -90,6 +97,27 @@ async def history_window_days(db: AsyncSession) -> int:
     return max(0, delta.days)
 
 
+async def latest_predictions(
+    db: AsyncSession, event_ids: List[str]
+) -> Dict[str, FirePrediction]:
+    """Most recent prediction per event, in one query."""
+    if not event_ids:
+        return {}
+    rows = list(
+        (
+            await db.execute(
+                select(FirePrediction)
+                .where(FirePrediction.fire_event_id.in_(event_ids))
+                .order_by(FirePrediction.fire_event_id, FirePrediction.id.desc())
+            )
+        ).scalars()
+    )
+    latest: Dict[str, FirePrediction] = {}
+    for row in rows:
+        latest.setdefault(row.fire_event_id, row)
+    return latest
+
+
 async def recurrence_count(db: AsyncSession, event: FireEvent) -> int:
     """Other events that have burned at this location within known history."""
     result = await db.execute(
@@ -119,8 +147,10 @@ def serialise_event(
     recurrence: int = 0,
     history_days: int = 0,
     facility: Optional[Facility] = None,
+    prediction: Optional[FirePrediction] = None,
 ) -> Dict[str, Any]:
-    severity = provisional_severity(event.frp_latest_mw)
+    severity = prediction.severity if prediction else provisional_severity(event.frp_latest_mw)
+    probabilities: Optional[Dict[str, float]] = None
     distance_km = (
         round(event.nearest_facility_distance_m / 1000.0, 2)
         if event.nearest_facility_distance_m is not None
@@ -168,6 +198,18 @@ def serialise_event(
         },
     ]
 
+    if prediction is not None:
+        probabilities = {
+            "industrial": prediction.industrial_probability,
+            "flare": prediction.flare_probability,
+            "forest": prediction.forest_probability,
+            "agriculture": prediction.agriculture_probability,
+            "gas_oil": prediction.gas_oil_probability,
+            "urban": prediction.urban_probability,
+            "unknown": prediction.unknown_probability,
+        }
+        reasoning = prediction.reasoning_steps or reasoning
+
     return {
         "fire_event_id": event.id,
         "latitude": event.latitude,
@@ -185,12 +227,17 @@ def serialise_event(
         # NASA's own detection confidence - distinct from classification
         # confidence, which does not exist until Phase 5.
         "detection_confidence_pct": event.detection_confidence_pct,
-        "prediction": None,
-        "classification_confidence_pct": None,
-        "probabilities": None,
-        "model_version": INTERIM_MODEL_VERSION,
+        "prediction": prediction.predicted_class if prediction else None,
+        "prediction_label": CLASS_LABEL.get(prediction.predicted_class) if prediction else None,
+        "classification_confidence_pct": prediction.confidence_pct if prediction else None,
+        "probabilities": probabilities if prediction else None,
+        "model_version": prediction.model_version if prediction else INTERIM_MODEL_VERSION,
+        "model_kind": prediction.model_kind if prediction else "none",
+        "data_quality": prediction.data_quality if prediction else None,
         "severity": severity,
-        "severity_is_provisional": True,
+        # True only while an event has no real prediction; the FRP band is a
+        # placeholder, and the dashboard must be able to say so.
+        "severity_is_provisional": prediction is None,
         "land_cover": event.land_cover,  # populated in Phase 4
         "location_name": event.location_name
         or f"{abs(event.latitude):.4f}°{'N' if event.latitude >= 0 else 'S'}, "
@@ -205,7 +252,9 @@ def serialise_event(
         "is_new": event.detection_count <= 1,
         "reasoning_steps": reasoning,
         "suggested_action": (
-            "REVIEW REQUIRED: Thermal anomaly detected. Source classification pending."
+            prediction.suggested_action
+            if prediction and prediction.suggested_action
+            else "REVIEW REQUIRED: Thermal anomaly detected. Source classification pending."
         ),
     }
 
@@ -259,12 +308,14 @@ async def list_fires(
     events = list((await db.execute(query)).scalars())
 
     history_days = await history_window_days(db)
+    predictions = await latest_predictions(db, [e.id for e in events])
     items = [
         serialise_event(
             event,
             recurrence=await recurrence_count(db, event),
             history_days=history_days,
             facility=event.nearest_facility,
+            prediction=predictions.get(event.id),
         )
         for event in events
     ]
@@ -291,11 +342,13 @@ async def get_fire(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str
     if event is None:
         raise HTTPException(status_code=404, detail="Fire event not found")
 
+    predictions = await latest_predictions(db, [event.id])
     return serialise_event(
         event,
         recurrence=await recurrence_count(db, event),
         history_days=await history_window_days(db),
         facility=event.nearest_facility,
+        prediction=predictions.get(event.id),
     )
 
 
@@ -383,4 +436,108 @@ async def dashboard_summary(db: AsyncSession = Depends(get_db)) -> Dict[str, Any
         "history_days": await history_window_days(db),
         "severity_is_provisional": True,
         "model_version": INTERIM_MODEL_VERSION,
+    }
+
+
+@router.get("/api/fires/{fire_id}/prediction")
+async def get_prediction(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """Classifier output (spec section 19).
+
+    This is the exact contract Phase 8's trained model will emit; swapping the
+    model changes `model_kind` and nothing else.
+    """
+    prediction = (
+        await db.execute(
+            select(FirePrediction)
+            .where(FirePrediction.fire_event_id == fire_id)
+            .order_by(FirePrediction.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if prediction is None:
+        raise HTTPException(
+            status_code=404, detail="No prediction yet - the event has not been analysed"
+        )
+
+    return {
+        "fire_event_id": fire_id,
+        "prediction": prediction.predicted_class,
+        "label": CLASS_LABEL.get(prediction.predicted_class),
+        "confidence": round(prediction.confidence, 4),
+        "confidence_pct": prediction.confidence_pct,
+        "probabilities": {
+            "industrial": prediction.industrial_probability,
+            "flare": prediction.flare_probability,
+            "forest": prediction.forest_probability,
+            "agriculture": prediction.agriculture_probability,
+            "gas_oil": prediction.gas_oil_probability,
+            "urban": prediction.urban_probability,
+            "unknown": prediction.unknown_probability,
+        },
+        "severity": prediction.severity,
+        "model_version": prediction.model_version,
+        "model_kind": prediction.model_kind,
+        "data_quality": prediction.data_quality,
+        "reasoning_steps": prediction.reasoning_steps,
+        "suggested_action": prediction.suggested_action,
+        "created_at": prediction.created_at.isoformat(),
+        # Spec Rule 8 - the UI must never present this as a determination.
+        "interpretation": (
+            "Most probable source category, not a determination of ignition cause."
+        ),
+    }
+
+
+@router.get("/api/fires/{fire_id}/features")
+async def get_feature_vector(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """The flat feature vector the prediction was made from (spec section 11)."""
+    prediction = (
+        await db.execute(
+            select(FirePrediction)
+            .where(FirePrediction.fire_event_id == fire_id)
+            .order_by(FirePrediction.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if prediction is None:
+        raise HTTPException(status_code=404, detail="No feature vector yet")
+    return {
+        "fire_event_id": fire_id,
+        "model_version": prediction.model_version,
+        "features": prediction.feature_snapshot,
+    }
+
+
+@router.get("/api/fires/{fire_id}/impact")
+async def get_impact(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
+    """Risk zones, exposure and potential pollutants (spec sections 20-22)."""
+    impact = (
+        await db.execute(
+            select(ImpactAssessment)
+            .where(ImpactAssessment.fire_event_id == fire_id)
+            .order_by(ImpactAssessment.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if impact is None:
+        raise HTTPException(status_code=404, detail="No impact assessment yet")
+
+    return {
+        "fire_event_id": fire_id,
+        "risk_level": impact.risk_level,
+        "core_radius_m": impact.core_radius_m,
+        "downwind_length_m": impact.downwind_length_m,
+        "wind_speed_ms": impact.wind_speed_ms,
+        "wind_direction_deg": impact.wind_direction_deg,
+        "plume_bearing_deg": impact.plume_bearing_deg,
+        "exposed": impact.exposed,
+        "exposure_count": impact.exposure_count,
+        "potential_pollutants": impact.potential_pollutants,
+        "pollutant_caveat": (
+            "Potential pollutants only. Actual emissions depend on the material burning "
+            "and are not measured by satellite."
+        ),
+        "risk_zones": impact.risk_zones,
+        "notes": impact.notes,
+        "created_at": impact.created_at.isoformat(),
     }

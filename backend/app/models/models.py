@@ -285,3 +285,66 @@ class SeedRun(Base):
     events_updated = Column(Integer, nullable=False, default=0)
     ok = Column(Boolean, nullable=False, default=True)
     detail = Column(Text, nullable=True)
+
+
+class FirePrediction(Base):
+    """Classifier output per event (spec section 25).
+
+    `feature_snapshot` is the highest-leverage column here: OSM and weather
+    both drift, so without a stored snapshot Phase 8's trainer could never
+    reconstruct the inputs a historical prediction was made from. With it,
+    training is `SELECT feature_snapshot, label FROM ...`.
+    """
+
+    __tablename__ = "fire_predictions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fire_event_id = Column(String, ForeignKey("fire_events.id"), nullable=False, index=True)
+
+    predicted_class = Column(String, nullable=False)
+    confidence = Column(Float, nullable=False, default=0.0)
+    confidence_pct = Column(SmallInteger, nullable=False, default=0)
+
+    industrial_probability = Column(Float, nullable=False, default=0.0)
+    flare_probability = Column(Float, nullable=False, default=0.0)
+    forest_probability = Column(Float, nullable=False, default=0.0)
+    agriculture_probability = Column(Float, nullable=False, default=0.0)
+    gas_oil_probability = Column(Float, nullable=False, default=0.0)
+    urban_probability = Column(Float, nullable=False, default=0.0)
+    unknown_probability = Column(Float, nullable=False, default=0.0)
+
+    severity = Column(String, nullable=False, default="MEDIUM")
+    model_version = Column(String, nullable=False)
+    model_kind = Column(String, nullable=False, default="rule_scorer")
+    data_quality = Column(Float, nullable=False, default=1.0)
+
+    reasoning_steps = Column(JSONB, nullable=True)
+    feature_snapshot = Column(JSONB, nullable=True)
+    suggested_action = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ImpactAssessment(Base):
+    """Risk, exposure and potential pollutants (spec sections 20-22, 25)."""
+
+    __tablename__ = "impact_assessments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fire_event_id = Column(String, ForeignKey("fire_events.id"), nullable=False, index=True)
+
+    risk_level = Column(String, nullable=False, default="MODERATE")
+    core_radius_m = Column(Float, nullable=True)
+    downwind_length_m = Column(Float, nullable=True)
+    wind_speed_ms = Column(Float, nullable=True)
+    wind_direction_deg = Column(Float, nullable=True)
+    plume_bearing_deg = Column(Float, nullable=True)
+
+    exposed = Column(JSONB, nullable=True)
+    exposure_count = Column(Integer, nullable=False, default=0)
+    # "Potential", never "confirmed released" (spec Rule 7).
+    potential_pollutants = Column(JSONB, nullable=True)
+    risk_zones = Column(JSONB, nullable=True)
+    notes = Column(JSONB, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
