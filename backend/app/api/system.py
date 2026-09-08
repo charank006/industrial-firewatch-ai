@@ -15,6 +15,8 @@ from fastapi import APIRouter
 
 from app.config import settings
 from app.database.connection import probe_postgis, probe_postgres
+from app.services.firms_service import probe_map_key
+from app.services.weather_service import probe_open_meteo
 
 router = APIRouter(tags=["system"])
 
@@ -62,16 +64,15 @@ async def get_system_status():
     detail rather than a reassuring literal.
     """
     checked_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    pg, gis = await asyncio.gather(probe_postgres(), probe_postgis())
+    pg, gis, firms, meteo = await asyncio.gather(
+        probe_postgres(), probe_postgis(), probe_map_key(), probe_open_meteo()
+    )
 
     probes: Dict[str, Dict[str, Any]] = {
         "postgres": {**pg, "checked_at": checked_at},
         "postgis": {**gis, "checked_at": checked_at},
-        "firms": _probe_result(
-            False,
-            "MAP_KEY not configured" if not settings.NASA_FIRMS_MAP_KEY else "Not wired yet (Phase 1)",
-        ),
-        "open_meteo": _probe_result(False, "Not wired yet (Phase 1)"),
+        "firms": {**firms, "checked_at": checked_at},
+        "open_meteo": {**meteo, "checked_at": checked_at},
         "overpass": _probe_result(False, "Not wired yet (Phase 4)"),
         "classifier": _probe_result(False, "Not wired yet (Phase 5)"),
         "worker": _probe_result(False, "Not wired yet (Phase 7)"),
