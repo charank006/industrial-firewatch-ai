@@ -4,12 +4,14 @@ import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { MapLegend } from '../../components/map/MapLegend';
 import { TimeScrubber } from '../../components/timeline/TimeScrubber';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { ActiveFireBar } from '../../components/intelligence/ActiveFireBar';
 
 export const ThermalHistoryPage: React.FC = () => {
   const { selectedIncident } = useIntelligence();
 
   return (
     <div className="h-[calc(100vh-5.75rem)] w-full flex flex-col bg-[#050A12] p-2 space-y-2 overflow-hidden font-sans text-[#F5F7FA]">
+      <ActiveFireBar section="Thermal history" />
       {/* Page Title Bar */}
       <div className="flex items-center justify-between bg-[#07101B] border border-[#203246] rounded-lg p-3 font-mono text-xs shrink-0">
         <div className="flex items-center space-x-2">

@@ -10,6 +10,7 @@
 import React from 'react';
 import { CloudDrizzle, Info, Thermometer, Wind } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { ActiveFireBar } from '../../components/intelligence/ActiveFireBar';
 import { WeatherPanel } from '../../components/intelligence/AnalysisPanels';
 import { bearingToCompass } from '../../components/intelligence/formatters';
 
@@ -33,6 +34,7 @@ export const WeatherAnalysisPage: React.FC = () => {
 
   return (
     <div className="p-6 space-y-5 font-sans text-slate-200 max-w-6xl">
+      <ActiveFireBar section="Weather & 6-day baseline" />
       <div className="space-y-1">
         <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-100">
           <CloudDrizzle className="w-5 h-5 text-[#3DB7D9]" />

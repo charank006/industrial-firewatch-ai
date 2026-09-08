@@ -172,6 +172,13 @@ export interface WeatherDetail {
   interpretation: string;
 }
 
+export interface EmergencyFacility {
+  kind: 'hospital' | 'school' | 'fire_station';
+  name: string;
+  amenity: string;
+  distanceM: number | null;
+}
+
 export interface SurroundingsDetail {
   radiusM: number;
   industrialAreaKm2: number | null;
@@ -186,6 +193,8 @@ export interface SurroundingsDetail {
   hospitals: number | null;
   schools: number | null;
   fireStations: number | null;
+  /** The named facilities behind those counts, nearest first. */
+  emergencyFacilities: EmergencyFacility[];
   roadLengthKm: number | null;
   nearestFactoryM: number | null;
   nearestGasFacilityM: number | null;

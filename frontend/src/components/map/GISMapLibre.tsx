@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { classColorMatchExpression } from '../../utils/classColors';
 import { useIntelligence } from '../../context/IntelligenceContext';
 import {
   facilitiesToGeoJSON,
@@ -223,17 +224,8 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         type: 'circle',
         source: 'hotspots-source',
         paint: {
-          'circle-color': [
-            'match',
-            ['get', 'classification'],
-            'Industrial Fire', '#FF3B30',
-            'Routine Flare', '#FF6B22',
-            'Forest Fire', '#FF6B22',
-            'Agricultural Burning', '#FFB020',
-            'Gas/Oil', '#A855F7',
-            'Urban', '#EC4899',
-            '#66768A',
-          ],
+          // Generated from the shared palette so the globe cannot drift from it.
+          'circle-color': classColorMatchExpression() as never,
           'circle-radius': [
             'interpolate',
             ['linear'],

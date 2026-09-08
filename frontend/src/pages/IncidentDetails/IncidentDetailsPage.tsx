@@ -10,6 +10,7 @@ import {
 import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { ActiveFireBar } from '../../components/intelligence/ActiveFireBar';
 
 const HISTORICAL_FRP_DATA = [
   { time: 'Jul 01', frp: 15.2, baseline: 15.0 },
@@ -34,6 +35,7 @@ export const IncidentDetailsPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#050A12] p-4 sm:p-6 space-y-6 font-sans text-[#F5F7FA]">
+      <ActiveFireBar section="Detection record" />
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between border-b border-[#203246] pb-4 font-mono text-xs">
         <button

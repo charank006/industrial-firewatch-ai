@@ -11,12 +11,25 @@ import {
 import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { ActiveFireBar } from '../../components/intelligence/ActiveFireBar';
 import { facilityDistance } from '../../components/intelligence/formatters';
 
 export const IncidentAnalysisPage: React.FC = () => {
   const { incidentId } = useParams<{ incidentId: string }>();
   const navigate = useNavigate();
-  const { hotspots, selectFacilityById } = useIntelligence();
+  const { hotspots, selectFacilityById, analysis } = useIntelligence();
+
+  /**
+   * Nearest mapped facility of a kind, from the OSM enrichment. The page used
+   * to name Gujarat contacts regardless of where the fire actually was.
+   */
+  const nearestOfKind = (kind: string): string | null => {
+    const match = (analysis?.surroundings?.emergencyFacilities ?? []).find((f) => f.kind === kind);
+    if (!match) return null;
+    return match.distanceM === null
+      ? match.name
+      : `${match.name} — ${Math.round(match.distanceM)}m`;
+  };
 
   const incident = hotspots.find((h) => h.id === incidentId) || hotspots[0];
   const [customRadius, setCustomRadius] = useState<number>(1000);
@@ -32,6 +45,7 @@ export const IncidentAnalysisPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#05080D] p-4 space-y-4 font-sans text-[#F1F4F6]">
+      <ActiveFireBar section="Full analysis" />
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between border-b border-[#253340] pb-3 font-mono text-xs">
         <button
@@ -181,7 +195,9 @@ export const IncidentAnalysisPage: React.FC = () => {
                   <span className="text-[9px] px-1 py-0.2 bg-[#F04438]/20 rounded">URGENT</span>
                 </div>
                 <p className="text-[#A7B4C1] text-[10px]">Police, Fire Department, Industrial Ambulance</p>
-                <div className="text-white font-semibold text-[10px] pt-1">Surat District Fire Control (112)</div>
+                <div className="text-white font-semibold text-[10px] pt-1">
+                  {nearestOfKind('fire_station') ?? 'National emergency number 112'}
+                </div>
               </div>
 
               {/* Priority 2: Facility Operators */}
@@ -191,7 +207,9 @@ export const IncidentAnalysisPage: React.FC = () => {
                   <span className="text-[9px] px-1 py-0.2 bg-[#FF6B35]/20 rounded">DIRECT</span>
                 </div>
                 <p className="text-[#A7B4C1] text-[10px]">Plant Safety Officers & Storage Tank Managers</p>
-                <div className="text-white font-semibold text-[10px] pt-1">Surat Petrochem Safety Desk</div>
+                <div className="text-white font-semibold text-[10px] pt-1">
+                  {incident.nearestFacilityId ? incident.nearestFacilityName : 'No registry facility within 50 km'}
+                </div>
               </div>
 
               {/* Priority 3: Opted-in Users */}

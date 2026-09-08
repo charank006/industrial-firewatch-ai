@@ -327,3 +327,57 @@ class TestLandCoverThreshold:
 
         f.industrial_area_km2 = 0.19 * disc_km2
         assert derive_land_cover(f, 1000) == "Unclassified"
+
+
+class TestEmergencyFacilities:
+    """The counts alone forced RiskImpactPage to invent four residents with
+    fake phone numbers to fill its panel. Overpass already returns the name
+    and geometry of every hospital, school and fire station in the disc."""
+
+    def _elements(self):
+        return [
+            {
+                "type": "node", "lat": 21.1760, "lon": 72.8345,
+                "tags": {"amenity": "hospital", "name": "District Hospital"},
+            },
+            {
+                "type": "node", "lat": 21.1900, "lon": 72.8345,
+                "tags": {"amenity": "fire_station", "name": "Station 4"},
+            },
+            {
+                "type": "node", "lat": 21.1745, "lon": 72.8345,
+                "tags": {"amenity": "school"},
+            },
+        ]
+
+    def test_named_facilities_are_kept_not_just_counted(self):
+        result = extract_features(self._elements(), 21.1738, 72.8345, 1000)
+        names = [f["name"] for f in result.emergency_facilities]
+        assert "District Hospital" in names
+        assert "Station 4" in names
+
+    def test_they_are_ordered_nearest_first(self):
+        result = extract_features(self._elements(), 21.1738, 72.8345, 1000)
+        distances = [f["distance_m"] for f in result.emergency_facilities]
+        assert distances == sorted(distances)
+
+    def test_distance_is_metres_from_the_fire(self):
+        result = extract_features(self._elements(), 21.1738, 72.8345, 1000)
+        nearest = result.emergency_facilities[0]
+        # ~78m north of the origin.
+        assert 50 < nearest["distance_m"] < 120
+
+    def test_an_unnamed_facility_is_reported_not_dropped(self):
+        """Unnamed amenities are common where mapping is sparse; omitting them
+        would understate what is actually near the fire."""
+        result = extract_features(self._elements(), 21.1738, 72.8345, 1000)
+        schools = [f for f in result.emergency_facilities if f["kind"] == "school"]
+        assert len(schools) == 1
+        assert "Unnamed" in schools[0]["name"]
+
+    def test_the_list_agrees_with_the_counts(self):
+        result = extract_features(self._elements(), 21.1738, 72.8345, 1000)
+        kinds = [f["kind"] for f in result.emergency_facilities]
+        assert kinds.count("hospital") == result.hospitals
+        assert kinds.count("fire_station") == result.fire_stations
+        assert kinds.count("school") == result.schools

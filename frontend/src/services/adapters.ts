@@ -230,6 +230,12 @@ export function adaptSurroundings(raw: Record<string, any> | null): Surroundings
     hospitals: num(raw.hospitals),
     schools: num(raw.schools),
     fireStations: num(raw.fire_stations),
+    emergencyFacilities: (raw.emergency_facilities ?? []).map((f: Record<string, any>) => ({
+      kind: f.kind,
+      name: f.name,
+      amenity: f.amenity,
+      distanceM: num(f.distance_m),
+    })),
     roadLengthKm: num(raw.road_length_km),
     nearestFactoryM: num(raw.nearest_factory_m),
     nearestGasFacilityM: num(raw.nearest_gas_facility_m),

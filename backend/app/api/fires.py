@@ -665,7 +665,7 @@ async def get_surroundings(fire_id: str, db: AsyncSession = Depends(get_db)) -> 
         "nearest_factory_m", "nearest_gas_facility_m", "nearest_residential_m",
         "nearest_forest_m", "nearest_farmland_m", "inside_industrial", "inside_forest",
         "inside_farmland", "inside_residential", "land_cover", "osm_coverage",
-        "osm_element_count",
+        "osm_element_count", "emergency_facilities",
     )
     return {
         "fire_event_id": fire_id,

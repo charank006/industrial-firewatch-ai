@@ -239,6 +239,10 @@ async def build_feature_vector(
             "nearest_gas_facility_m", "nearest_residential_m", "nearest_forest_m",
             "nearest_farmland_m", "inside_industrial", "inside_forest", "inside_farmland",
             "inside_residential", "land_cover", "osm_coverage", "osm_element_count",
+            # Named hospitals/schools/fire stations with distances. Carried so
+            # the impact view can name real facilities instead of inventing
+            # contacts; the scorer ignores it.
+            "emergency_facilities",
         ):
             if key in surroundings:
                 features[key] = surroundings[key]

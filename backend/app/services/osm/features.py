@@ -99,6 +99,11 @@ class SurroundingsFeatures:
     schools: int = 0
     fire_stations: int = 0
 
+    # The named facilities behind those counts, nearest first. Overpass
+    # already returns name and geometry for each; keeping only the tally
+    # forced the dashboard to invent contacts to fill the panel.
+    emergency_facilities: List[Dict[str, Any]] = field(default_factory=list)
+
     road_length_km: float = 0.0
 
     nearest_factory_m: Optional[float] = None
@@ -272,12 +277,32 @@ def extract_features(
         if "building" in tags:
             features.building_count += 1
         amenity = tags.get("amenity")
+        kind = None
         if amenity in {"hospital", "clinic"}:
             features.hospitals += 1
+            kind = "hospital"
         elif amenity in {"school", "college", "university"}:
             features.schools += 1
+            kind = "school"
         elif amenity == "fire_station":
             features.fire_stations += 1
+            kind = "fire_station"
+
+        if kind is not None:
+            # `polygons` / `point` are the already-projected geometries for
+            # this element, in a frame whose origin is the fire itself.
+            geometries = polygons if polygons else ([point] if point is not None else [])
+            distance = geo.distance_to_origin_m(geometries)
+            features.emergency_facilities.append(
+                {
+                    "kind": kind,
+                    # Unnamed is common in sparsely mapped areas; say so rather
+                    # than dropping a facility that genuinely exists.
+                    "name": tags.get("name:en") or tags.get("name") or f"Unnamed {kind.replace('_', ' ')}",
+                    "amenity": amenity,
+                    "distance_m": round(distance, 1) if distance is not None else None,
+                }
+            )
 
     # --- areas -----------------------------------------------------------
     features.forest_area_km2 = round(geo.merged_area_km2(buckets["forest"].polygons, radius_m), 4)
@@ -327,6 +352,9 @@ def extract_features(
     features.inside_residential = geo.contains_origin(buckets["residential"].polygons)
 
     features.land_cover = derive_land_cover(features, radius_m)
+    features.emergency_facilities.sort(
+        key=lambda item: (item["distance_m"] is None, item["distance_m"] or 0.0)
+    )
     features.location_name = derive_location_name(places)
     features.geometry_quality = "approximate" if used_bounds_fallback else "exact"
 
