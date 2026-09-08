@@ -117,12 +117,30 @@ class TestSystemStatusIsHonest:
     """It previously reported "POSTGIS ST_DWITHIN ACTIVE" as a string literal
     with nothing probed."""
 
-    def test_reports_degraded_while_subsystems_are_unwired(self):
+    def test_every_probe_reports_a_real_result(self):
+        """Each probe must carry an actual outcome and timestamp, whether the
+        subsystem is up or not - never a reassuring hardcoded string."""
         body = client.get("/api/system/status").json()
-        assert body["status"] == "DEGRADED"
-        assert body["probes"]["postgres"]["ok"] is False
-        # No unconditional success strings anywhere in the payload.
-        assert "ST_DWITHIN ACTIVE" not in str(body)
+        assert body["status"] in {"OPERATIONAL", "DEGRADED"}
+        # The old endpoint returned this as an unconditional literal.
+        assert "POSTGIS ST_DWITHIN ACTIVE (SRID 4326)" not in str(body)
+
+        for name, probe in body["probes"].items():
+            assert isinstance(probe["ok"], bool), name
+            assert probe["detail"], name
+            assert probe["checked_at"], name
+
+    def test_postgis_success_is_evidenced_by_a_real_version_string(self):
+        """When postgis reports ok it must be because PostGIS_Version() and a
+        real ST_DWithin call both succeeded - not because a literal said so."""
+        probe = client.get("/api/system/status").json()["probes"]["postgis"]
+        if probe["ok"]:
+            assert "PostGIS" in probe["detail"]
+            assert "ST_DWithin verified" in probe["detail"]
+            assert probe["latency_ms"] is not None
+        else:
+            # An honest failure names the actual exception.
+            assert ":" in probe["detail"]
 
     def test_echoes_real_thresholds_for_methodology_page(self):
         thresholds = client.get("/api/system/status").json()["thresholds"]

@@ -29,6 +29,28 @@ config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 target_metadata = Base.metadata
 
+# PostGIS installs its own tables and views into the same schema. Without this
+# filter, autogenerate reports them as "removed" and writes a migration that
+# DROPs spatial_ref_sys, taking the projection database with it.
+POSTGIS_MANAGED = {
+    "spatial_ref_sys",
+    "geometry_columns",
+    "geography_columns",
+    "raster_columns",
+    "raster_overviews",
+}
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    if type_ == "table" and name in POSTGIS_MANAGED:
+        return False
+    # geoalchemy2 creates its own idx_<table>_<column> GIST indexes as a side
+    # effect of the Geometry column, so they must not be diffed either.
+    if type_ == "index" and name and name.startswith("idx_") and name.endswith("_geometry"):
+        return False
+    return True
+
+
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
@@ -51,6 +73,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=url,
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -60,7 +83,11 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+    )
 
     with context.begin_transaction():
         context.run_migrations()

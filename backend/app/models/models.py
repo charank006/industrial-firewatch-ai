@@ -1,88 +1,287 @@
+"""Spatial data model (spec sections 6 and 25).
+
+Replaces the previous declarative sketch, which stored geography as plain
+Float columns, declared no relationships or indexes, and was imported by zero
+files while /api/system/status advertised "POSTGIS ST_DWITHIN ACTIVE".
+
+Everything here hangs off the shared Base in app.database.connection so
+Alembic autogenerate actually sees it.
+"""
+
+from __future__ import annotations
+
 import datetime
-from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, ForeignKey, Text
-from sqlalchemy.orm import declarative_base, relationship
+import hashlib
 
-Base = declarative_base()
+from geoalchemy2 import Geometry
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 
-class User(Base):
-    __tablename__ = "users"
+from app.database.connection import Base
 
-    id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
-    phone = Column(String, nullable=True)
-    email = Column(String, nullable=True)
-    lat = Column(Float, nullable=False)
-    lng = Column(Float, nullable=False)
-    notification_opt_in = Column(Boolean, default=True)
-    push_token = Column(String, nullable=True)
-    status = Column(String, default="ACTIVE")
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
 
-class Incident(Base):
-    __tablename__ = "incidents"
+def utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
 
-    id = Column(String, primary_key=True)
-    title = Column(String, nullable=False)
-    type = Column(String, nullable=False) # Wildfire, Industrial Fire, Unknown Thermal Event, Agricultural Fire
-    status = Column(String, default="ACTIVE") # ACTIVE, CONTAINED, RESOLVED
-    severity = Column(String, default="HIGH") # CRITICAL, HIGH, MEDIUM, LOW
-    lat = Column(Float, nullable=False)
-    lng = Column(Float, nullable=False)
-    frp_mw = Column(Float, default=50.0)
-    brightness_k = Column(Float, default=320.0)
-    confidence = Column(Integer, default=90)
-    source = Column(String, default="MANUAL_BETA_EVENT") # MANUAL_BETA_EVENT, SATELLITE_VIIRS
-    custom_radius_meters = Column(Float, default=1000.0)
-    location_name = Column(String, nullable=False)
-    suggested_action = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+
+def detection_identity(
+    satellite: str, instrument: str, acquisition_time: datetime.datetime, lat: float, lon: float
+) -> str:
+    """Stable identity for one satellite observation of one pixel.
+
+    FIRMS re-serves identical rows on every overlapping poll - roughly 96
+    times a day at a 15 minute cadence with day_range=1. Hashing the identity
+    into a single unique column keeps the dedup a plain ON CONFLICT DO NOTHING
+    rather than a multi-column expression index that ON CONFLICT must then
+    re-infer. Coordinates are rounded to 5dp (~1.1m), far finer than any
+    sensor's geolocation accuracy.
+    """
+    raw = f"{satellite}|{instrument}|{acquisition_time.isoformat()}|{lat:.5f}|{lon:.5f}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
 
 class Facility(Base):
+    """Curated industrial asset registry.
+
+    Deliberately NOT derived from OpenStreetMap: real operations systems keep
+    a curated registry, and OSM industrial polygons are frequently unnamed and
+    incomplete. Phase 4 enriches these with OSM tags rather than replacing them.
+    """
+
     __tablename__ = "facilities"
 
     id = Column(String, primary_key=True)
     name = Column(String, nullable=False)
     type = Column(String, nullable=False)
-    lat = Column(Float, nullable=False)
-    lng = Column(Float, nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    geometry = Column(Geometry("POINT", srid=4326), nullable=False)
     location = Column(String, nullable=False)
-    status = Column(String, default="NORMAL")
-    baseline_frp = Column(Float, default=15.0)
-    current_frp = Column(Float, default=15.0)
-    risk_buffer_radius_km = Column(Float, default=2.0)
-    emergency_contact = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="NORMAL")
+    baseline_frp = Column(Float, nullable=False, default=15.0)
+    current_frp = Column(Float, nullable=False, default=15.0)
+    last_detected = Column(DateTime(timezone=True), nullable=True)
+    total_events_past_90_days = Column(Integer, nullable=False, default=0)
+    risk_buffer_radius_km = Column(Float, nullable=False, default=2.0)
+    emergency_contact = Column(String, nullable=True)
+    osm_tags = Column(JSONB, nullable=True)  # populated in Phase 4
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
-class EmergencyContact(Base):
-    __tablename__ = "emergency_contacts"
+    # GIST index on `geometry` is created automatically by geoalchemy2.
 
-    id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
-    organization = Column(String, nullable=False)
-    category = Column(String, nullable=False) # police, fire, ambulance, facility
-    phone = Column(String, nullable=False)
-    email = Column(String, nullable=False)
-    lat = Column(Float, nullable=False)
-    lng = Column(Float, nullable=False)
 
-class NotificationEvent(Base):
-    __tablename__ = "notification_events"
+class FireEvent(Base):
+    """A physical fire, assembled from many detections (spec section 7)."""
+
+    __tablename__ = "fire_events"
 
     id = Column(String, primary_key=True)
-    incident_id = Column(String, ForeignKey("incidents.id"), nullable=False)
-    channels = Column(String, nullable=False) # FCM, SMS, EMAIL
-    status = Column(String, default="AUTHORIZED")
-    authorized_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    first_detected = Column(DateTime(timezone=True), nullable=False)
+    last_detected = Column(DateTime(timezone=True), nullable=False)
+    # FRP-weighted centroid of all member detections. Moves as the event grows.
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    geometry = Column(Geometry("POINT", srid=4326), nullable=False)
 
-class NotificationRecipient(Base):
-    __tablename__ = "notification_recipients"
+    # Position of the FIRST detection, never updated. The extent guard must be
+    # measured from a fixed anchor: against the moving centroid a creeping
+    # front drags the centroid along with it, the measured distance stays
+    # small, and the guard can never fire - which is the exact runaway it
+    # exists to prevent.
+    origin_latitude = Column(Float, nullable=True)
+    origin_longitude = Column(Float, nullable=True)
 
-    id = Column(String, primary_key=True)
-    event_id = Column(String, ForeignKey("notification_events.id"), nullable=False)
-    recipient_name = Column(String, nullable=False)
-    recipient_type = Column(String, nullable=False) # Emergency Contact, Facility Operator, Opted-in User
-    channel = Column(String, nullable=False) # FCM, SMS, EMAIL
-    status = Column(String, default="QUEUED") # QUEUED, SENT, DELIVERED, READ, ACKNOWLEDGED, FAILED
-    sent_at = Column(DateTime, nullable=True)
-    delivered_at = Column(DateTime, nullable=True)
-    read_at = Column(DateTime, nullable=True)
-    acknowledged_at = Column(DateTime, nullable=True)
+    status = Column(String, nullable=False, default="active")  # active | contained
+    detection_count = Column(Integer, nullable=False, default=0)
+    frp_max_mw = Column(Float, nullable=False, default=0.0)
+    frp_mean_mw = Column(Float, nullable=False, default=0.0)
+    frp_latest_mw = Column(Float, nullable=False, default=0.0)
+    brightness_k = Column(Float, nullable=True)
+    detection_confidence_pct = Column(SmallInteger, nullable=True)
+    day_night = Column(String(1), nullable=True)
+
+    # Set when a chaining guard trips, so lineage survives instead of being
+    # lost when a spreading front is split into a new event.
+    parent_event_id = Column(String, ForeignKey("fire_events.id"), nullable=True)
+
+    # Exists from Phase 2 so Phase 4's out-of-band analysis worker has a column
+    # to drain: pending | analyzing | complete | failed
+    analysis_status = Column(String, nullable=False, default="pending")
+    surroundings_status = Column(String, nullable=True)  # ok | sparse | unavailable
+
+    location_name = Column(String, nullable=True)
+    land_cover = Column(String, nullable=True)
+    nearest_facility_id = Column(String, ForeignKey("facilities.id"), nullable=True)
+    nearest_facility_distance_m = Column(Float, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    detections = relationship(
+        "FireDetection", back_populates="event", cascade="all, delete-orphan"
+    )
+    nearest_facility = relationship("Facility", foreign_keys=[nearest_facility_id])
+
+    __table_args__ = (
+        Index("ix_fire_events_last_detected", "last_detected"),
+        # The event-linking query filters on both status and time before the
+        # KNN ordering, so this composite carries it.
+        Index("ix_fire_events_status_last_detected", "status", "last_detected"),
+        Index("ix_fire_events_analysis_status", "analysis_status"),
+    )
+
+
+class FireDetection(Base):
+    """One satellite observation of one pixel (spec section 6)."""
+
+    __tablename__ = "fire_detections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fire_event_id = Column(String, ForeignKey("fire_events.id"), nullable=True, index=True)
+
+    detection_key = Column(String(64), nullable=False)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    geometry = Column(Geometry("POINT", srid=4326), nullable=False)
+    acquisition_time = Column(DateTime(timezone=True), nullable=False)
+
+    satellite = Column(String, nullable=False)
+    instrument = Column(String, nullable=False)
+    source = Column(String, nullable=False)
+
+    # VIIRS emits categorical l|n|h, MODIS an integer 0-100. Both are kept:
+    # the raw token so nothing is lost, the percentage so it is comparable.
+    confidence_raw = Column(String, nullable=True)
+    confidence_pct = Column(SmallInteger, nullable=True)
+
+    # brightness_k unifies VIIRS bright_ti4 and MODIS brightness; the
+    # sensor-specific channels are retained per spec section 25.
+    brightness_k = Column(Float, nullable=True)
+    bright_ti4 = Column(Float, nullable=True)
+    bright_ti5 = Column(Float, nullable=True)
+    bright_t31 = Column(Float, nullable=True)
+
+    frp_mw = Column(Float, nullable=False, default=0.0)
+    scan = Column(Float, nullable=True)
+    track = Column(Float, nullable=True)
+    day_night = Column(String(1), nullable=True)
+
+    raw_data = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    event = relationship("FireEvent", back_populates="detections")
+
+    __table_args__ = (
+        UniqueConstraint("detection_key", name="uq_fire_detections_identity"),
+        Index("ix_fire_detections_acquisition_time", "acquisition_time"),
+    )
+
+
+class WeatherObservation(Base):
+    """Current conditions at a fire's coordinate and hour (spec section 25)."""
+
+    __tablename__ = "weather_observations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fire_event_id = Column(String, ForeignKey("fire_events.id"), nullable=False, index=True)
+    observed_at = Column(DateTime(timezone=True), nullable=False)
+    local_hour = Column(String, nullable=False)
+    timezone = Column(String, nullable=True)
+    temperature_c = Column(Float, nullable=True)
+    humidity_pct = Column(Float, nullable=True)
+    wind_speed_ms = Column(Float, nullable=True)
+    wind_direction_deg = Column(Float, nullable=True)
+    precipitation_mm = Column(Float, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class WeatherAnomalyRecord(Base):
+    """Six-day baseline and derived anomalies (spec sections 9, 10, 25)."""
+
+    __tablename__ = "weather_anomalies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fire_event_id = Column(String, ForeignKey("fire_events.id"), nullable=False, index=True)
+
+    current_temperature_c = Column(Float, nullable=True)
+    baseline_temperature_c = Column(Float, nullable=True)
+    temperature_anomaly_c = Column(Float, nullable=True)
+    temperature_anomaly_z = Column(Float, nullable=True)
+    temperature_stdev_c = Column(Float, nullable=True)
+    temperature_trend_c_per_day = Column(Float, nullable=True)
+
+    current_humidity_pct = Column(Float, nullable=True)
+    baseline_humidity_pct = Column(Float, nullable=True)
+    humidity_anomaly_pct = Column(Float, nullable=True)
+
+    wind_change_ms = Column(Float, nullable=True)
+    precipitation_24h_mm = Column(Float, nullable=True)
+    precipitation_72h_mm = Column(Float, nullable=True)
+    dry_hours = Column(Integer, nullable=True)
+
+    vpd_kpa = Column(Float, nullable=True)
+    vpd_anomaly_kpa = Column(Float, nullable=True)
+
+    baseline_samples = Column(SmallInteger, nullable=False, default=0)
+    # ok | partial | insufficient - Phase 5 turns this into a confidence
+    # penalty rather than letting a thin baseline pass as a real one.
+    baseline_quality = Column(String, nullable=False, default="insufficient")
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class OsmCache(Base):
+    """Cached Overpass results (Phase 4).
+
+    Keyed on coordinates rounded to 3dp (~110m) so several detections of one
+    fire share an entry, sparing the public Overpass instances.
+    """
+
+    __tablename__ = "osm_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cache_key = Column(String, nullable=False, unique=True)
+    latitude = Column(Float, nullable=False)
+    longitude = Column(Float, nullable=False)
+    radius_m = Column(Integer, nullable=False)
+    features = Column(JSONB, nullable=True)
+    raw_payload = Column(JSONB, nullable=True)
+    element_count = Column(Integer, nullable=False, default=0)
+    geometry_quality = Column(String, nullable=True)  # exact | approximate
+    fetched_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SeedRun(Base):
+    """Records each ingest so the UI can state how much history actually exists.
+
+    Recurrence count is the strongest flare-vs-fire signal and starts at zero
+    on day one: FIRMS day_range maxes at 10 and true archive access needs a
+    manual request form. The dashboard must say "N in the last D days of
+    system history" with a real D rather than implying 180.
+    """
+
+    __tablename__ = "ingest_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    started_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    day_range = Column(Integer, nullable=False, default=1)
+    detections_fetched = Column(Integer, nullable=False, default=0)
+    detections_inserted = Column(Integer, nullable=False, default=0)
+    events_created = Column(Integer, nullable=False, default=0)
+    events_updated = Column(Integer, nullable=False, default=0)
+    ok = Column(Boolean, nullable=False, default=True)
+    detail = Column(Text, nullable=True)

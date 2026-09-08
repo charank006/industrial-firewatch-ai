@@ -13,10 +13,18 @@ import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.database.connection import get_db
+from app.seed_data import FACILITIES_DB
 from app.services import firms_service, weather_service
+from app.services.fire_event_service import (
+    mark_stale_events_contained,
+    process_detections,
+    seed_facilities,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -185,4 +193,46 @@ def _detection_json(detection: firms_service.FireDetection) -> Dict[str, Any]:
         "confidence_raw": detection.confidence_raw,
         "confidence_pct": detection.confidence_pct,
         "day_night": detection.day_night,
+    }
+
+
+@router.post("/seed-facilities")
+async def seed_facility_registry(
+    db: AsyncSession = Depends(get_db),
+    x_admin_token: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Load the curated industrial asset registry. Idempotent (upsert)."""
+    warning = require_admin(x_admin_token)
+    count = await seed_facilities(db, FACILITIES_DB)
+    return {"warning": warning, "facilities_seeded": count}
+
+
+@router.post("/ingest")
+async def ingest(
+    day_range: Optional[int] = Query(None, ge=1, le=10),
+    db: AsyncSession = Depends(get_db),
+    x_admin_token: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Fetch FIRMS detections and cluster them into fire events.
+
+    Safe to run repeatedly: detections dedupe on their identity hash, so a
+    second run over the same window inserts nothing and creates no events.
+    """
+    warning = require_admin(x_admin_token)
+    started = datetime.datetime.now(datetime.timezone.utc)
+
+    try:
+        detections = await firms_service.fetch_detections(day_range=day_range)
+    except firms_service.FirmsError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    result = await process_detections(db, detections)
+    contained = await mark_stale_events_contained(db)
+
+    return {
+        "warning": warning,
+        "started_at": started.isoformat(),
+        "day_range": day_range or settings.FIRMS_DAY_RANGE,
+        **result.as_dict(),
+        "events_marked_contained": contained,
     }
