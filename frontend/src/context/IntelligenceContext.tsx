@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { MOCK_ALERTS } from '../data/mockAlerts';
 import { MOCK_FACILITIES } from '../data/mockFacilities';
 import { MOCK_HOTSPOTS } from '../data/mockHotspots';
+import { DATA_SOURCE, fetchFacilities, fetchFires } from '../services/api';
+import { adaptFacility, adaptFireEvent, dateRangeToSince, regionToBbox } from '../services/adapters';
 import type {
   AlertItem,
   EventClassification,
@@ -33,6 +35,14 @@ interface IntelligenceContextType {
 
   // Calculated Metrics
   metrics: SituationMetrics;
+
+  // Data source state. In `mock` mode these are always false/null, so every
+  // existing page behaves exactly as it did before.
+  dataSource: 'mock' | 'api';
+  isLoading: boolean;
+  error: string | null;
+  historyDays: number | null;
+  refresh: () => void;
 
   // Actions
   setSelectedIncident: (incident: ThermalHotspot | null) => void;
@@ -71,18 +81,75 @@ const initialFilters: FilterState = {
 const IntelligenceContext = createContext<IntelligenceContextType | undefined>(undefined);
 
 export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [hotspots] = useState<ThermalHotspot[]>(MOCK_HOTSPOTS);
-  const [facilities] = useState<IndustrialFacility[]>(MOCK_FACILITIES);
+  const isApi = DATA_SOURCE === 'api';
+
+  // In mock mode these seed exactly as before, so the app renders identically
+  // on the first frame with no loading state anywhere.
+  const [hotspots, setHotspots] = useState<ThermalHotspot[]>(isApi ? [] : MOCK_HOTSPOTS);
+  const [facilities, setFacilities] = useState<IndustrialFacility[]>(isApi ? [] : MOCK_FACILITIES);
   const [alerts, setAlerts] = useState<AlertItem[]>(MOCK_ALERTS);
 
-  const [selectedIncident, setSelectedIncident] = useState<ThermalHotspot | null>(MOCK_HOTSPOTS[0]);
-  const [selectedFacility, setSelectedFacility] = useState<IndustrialFacility | null>(MOCK_FACILITIES[0]);
+  const [isLoading, setIsLoading] = useState<boolean>(isApi);
+  const [error, setError] = useState<string | null>(null);
+  const [historyDays, setHistoryDays] = useState<number | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const [selectedIncident, setSelectedIncident] = useState<ThermalHotspot | null>(
+    isApi ? null : MOCK_HOTSPOTS[0],
+  );
+  const [selectedFacility, setSelectedFacility] = useState<IndustrialFacility | null>(
+    isApi ? null : MOCK_FACILITIES[0],
+  );
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(true);
 
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [layers, setLayers] = useState<GISLayerVisibility>(initialLayers);
   const [mapMode, setMapMode] = useState<MapMode>('dark');
-  const [timelineIndex, setTimelineIndex] = useState<number>(MOCK_HOTSPOTS.length - 1);
+  // Math.max guards the empty first render in api mode, where
+  // `hotspots.length - 1` would otherwise be -1.
+  const [timelineIndex, setTimelineIndex] = useState<number>(Math.max(0, hotspots.length - 1));
+
+  const refresh = () => setReloadToken((n) => n + 1);
+
+  // Region and dateRange are wired into the query here. Both controls have
+  // existed in the UI since the beginning and drove nothing at all.
+  const { region, dateRange } = filters;
+
+  useEffect(() => {
+    if (!isApi) return;
+
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const [firesResponse, facilitiesResponse] = await Promise.all([
+          fetchFires({ bbox: regionToBbox(region), since: dateRangeToSince(dateRange) }),
+          fetchFacilities(),
+        ]);
+        if (cancelled) return;
+
+        const adaptedHotspots = firesResponse.fires.map(adaptFireEvent);
+        const adaptedFacilities = facilitiesResponse.facilities.map(adaptFacility);
+
+        setHotspots(adaptedHotspots);
+        setFacilities(adaptedFacilities);
+        setHistoryDays(firesResponse.history_days);
+        setTimelineIndex(Math.max(0, adaptedHotspots.length - 1));
+        setSelectedIncident((current) => current ?? adaptedHotspots[0] ?? null);
+        setSelectedFacility((current) => current ?? adaptedFacilities[0] ?? null);
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isApi, region, dateRange, reloadToken]);
 
   // Dynamic Filtering Logic
   const filteredHotspots = useMemo(() => {
@@ -128,7 +195,14 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
     });
 
-    const latestHotspot = filteredHotspots.length > 0 ? filteredHotspots[0] : undefined;
+    // Genuinely the most recent, not simply the first array element. Position
+    // happened to equal recency in the hand-ordered mocks; it does not once
+    // the API returns rows in any other order.
+    const latestHotspot = filteredHotspots.reduce<ThermalHotspot | undefined>(
+      (latest, h) =>
+        !latest || new Date(h.timestamp).getTime() > new Date(latest.timestamp).getTime() ? h : latest,
+      undefined,
+    );
 
     return {
       totalDetected,
@@ -187,6 +261,11 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
         mapMode,
         timelineIndex,
         metrics,
+        dataSource: DATA_SOURCE,
+        isLoading,
+        error,
+        historyDays,
+        refresh,
         setSelectedIncident,
         setSelectedFacility,
         selectIncidentById,

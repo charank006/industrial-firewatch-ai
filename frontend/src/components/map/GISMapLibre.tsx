@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useIntelligence } from '../../context/IntelligenceContext';
@@ -24,6 +24,21 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     layers,
     mapMode,
   } = useIntelligence();
+
+  // The init effect below runs once (it must - it builds the map), so any
+  // state its handlers close over is frozen at first render. With mock data
+  // that was invisible because the arrays were already populated; with async
+  // data the first render is empty and every click would look up an id in an
+  // empty array. Handlers read through this ref instead, which each render
+  // keeps current.
+  const liveDataRef = useRef({ filteredHotspots, facilities });
+  liveDataRef.current = { filteredHotspots, facilities };
+
+  // MapLibre only accepts addSource/setData once the style has loaded. Every
+  // sync effect below used to `return` early on !isStyleLoaded() and never
+  // retry, so a payload arriving before `load` fired was dropped for good -
+  // leaving the map permanently blank rather than merely stale.
+  const [styleReady, setStyleReady] = useState(false);
 
   // Initialize MapLibre Map
   useEffect(() => {
@@ -199,7 +214,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         if (!e.features || e.features.length === 0) return;
         const properties = e.features[0].properties;
         if (properties && properties.id) {
-          const found = filteredHotspots.find((h) => h.id === properties.id);
+          const found = liveDataRef.current.filteredHotspots.find((h) => h.id === properties.id);
           if (found) {
             setSelectedIncident(found);
             setIsDrawerOpen(true);
@@ -212,7 +227,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         if (!e.features || e.features.length === 0) return;
         const properties = e.features[0].properties;
         if (properties && properties.id) {
-          const found = facilities.find((f) => f.id === properties.id);
+          const found = liveDataRef.current.facilities.find((f) => f.id === properties.id);
           if (found) {
             setSelectedFacility(found);
           }
@@ -224,28 +239,34 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       map.on('mouseleave', 'hotspots-layer', () => (map.getCanvas().style.cursor = ''));
       map.on('mouseenter', 'facilities-layer', () => (map.getCanvas().style.cursor = 'pointer'));
       map.on('mouseleave', 'facilities-layer', () => (map.getCanvas().style.cursor = ''));
+
+      // Sources and layers now exist, so the sync effects can run. They are
+      // keyed on this, which is what makes data that arrived before `load`
+      // get applied rather than dropped.
+      setStyleReady(true);
     });
 
     return () => {
       map.remove();
       mapRef.current = null;
+      setStyleReady(false);
     };
   }, []);
 
   // Synchronize Basemap Mode
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !styleReady) return;
 
     if (map.getLayer('basemap-satellite')) {
       map.setLayoutProperty('basemap-satellite', 'visibility', mapMode === 'satellite' ? 'visible' : 'none');
     }
-  }, [mapMode]);
+  }, [mapMode, styleReady]);
 
   // Synchronize Data Sources when state updates
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !styleReady) return;
 
     const hsSource = map.getSource('hotspots-source') as maplibregl.GeoJSONSource;
     if (hsSource) {
@@ -261,12 +282,12 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     if (rkSource) {
       rkSource.setData(riskZonesToGeoJSON(selectedIncident) as any);
     }
-  }, [filteredHotspots, facilities, selectedIncident]);
+  }, [filteredHotspots, facilities, selectedIncident, styleReady]);
 
   // Synchronize Layer Visibility
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !styleReady) return;
 
     if (map.getLayer('hotspots-layer')) {
       map.setLayoutProperty('hotspots-layer', 'visibility', layers.thermalVIIRS ? 'visible' : 'none');
@@ -278,7 +299,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       map.setLayoutProperty('risk-zones-fill', 'visibility', layers.riskZones ? 'visible' : 'none');
       map.setLayoutProperty('risk-zones-line', 'visibility', layers.riskZones ? 'visible' : 'none');
     }
-  }, [layers]);
+  }, [layers, styleReady]);
 
   // Fly to selected incident or facility
   useEffect(() => {

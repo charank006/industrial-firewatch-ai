@@ -91,7 +91,9 @@ export const TimeScrubber: React.FC = () => {
         <input
           type="range"
           min={0}
-          max={hotspots.length - 1}
+          // Math.max guards the empty first render in api mode, where
+          // `hotspots.length - 1` is -1 and the range input breaks.
+          max={Math.max(0, hotspots.length - 1)}
           value={timelineIndex}
           onChange={(e) => {
             const idx = parseInt(e.target.value, 10);
