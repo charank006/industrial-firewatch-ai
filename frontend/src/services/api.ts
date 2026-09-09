@@ -41,7 +41,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch (cause) {
     throw new ApiError(
-      `Cannot reach the API at ${API_BASE_URL || 'the dev proxy'}${path}. Is the backend running on :8001?`,
+      `Cannot reach the API at ${API_BASE_URL || 'the dev proxy'}${path}. Is the backend running on :8000?`,
     );
   }
 

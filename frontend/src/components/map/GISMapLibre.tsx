@@ -321,16 +321,8 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         source: 'hotspots-source',
         paint: {
           'circle-color': classColorMatchExpression() as never,
-          'circle-radius': [
-            'interpolate',
-            ['linear'],
-            ['get', 'frpMw'],
-            5, 5,
-            50, 9,
-            150, 14,
-            300, 18,
-          ],
-          'circle-stroke-width': 2,
+          'circle-radius': 6.5,
+          'circle-stroke-width': 1.5,
           'circle-stroke-color': '#FFFFFF',
           'circle-opacity': 0.95,
         },
