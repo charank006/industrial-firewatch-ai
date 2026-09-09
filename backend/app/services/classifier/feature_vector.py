@@ -180,7 +180,10 @@ async def build_feature_vector(
         # --- temporal -----------------------------------------------------
         "duration_hours": round(duration, 2),
         "recurrence_count": await recurrence_count(db, event),
-        "site_median_frp_mw": await site_median_frp(db, event) or 0.0,
+        # None, not 0.0: "no other detection within 1 km" is not the same as
+        # "this site normally runs at zero megawatts", and the risk engine
+        # treats the two very differently.
+        "site_median_frp_mw": await site_median_frp(db, event),
         "neighbour_events_10km_24h": await neighbour_event_count(db, event),
         "history_days": await history_days(db),
         # --- OSM (nullable end to end; Overpass may be unavailable) --------

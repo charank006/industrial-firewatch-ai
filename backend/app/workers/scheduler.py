@@ -26,6 +26,7 @@ from app.workers.jobs import (
     analysis_job,
     containment_job,
     ingest_job,
+    risk_refresh_job,
     surroundings_retry_job,
 )
 
@@ -72,6 +73,13 @@ def start_scheduler() -> Optional[AsyncIOScheduler]:
         replace_existing=True,
     )
     scheduler.add_job(
+        risk_refresh_job,
+        IntervalTrigger(minutes=settings.RISK_REFRESH_MINUTES),
+        id="risk_refresh",
+        name="Recompute risk on active incidents",
+        replace_existing=True,
+    )
+    scheduler.add_job(
         surroundings_retry_job,
         IntervalTrigger(minutes=settings.SURROUNDINGS_RETRY_MINUTES),
         id="surroundings_retry",
@@ -90,9 +98,11 @@ def start_scheduler() -> Optional[AsyncIOScheduler]:
     _scheduler = scheduler
     logger.info(
         "Scheduler started - ingest every %d min, analysis every %d min, "
-        "surroundings retry every %d min, containment every %d h",
+        "risk refresh every %d min, surroundings retry every %d min, "
+        "containment every %d h",
         settings.FIRMS_POLL_MINUTES,
         settings.ANALYSIS_POLL_MINUTES,
+        settings.RISK_REFRESH_MINUTES,
         settings.SURROUNDINGS_RETRY_MINUTES,
         settings.CONTAINMENT_SWEEP_HOURS,
     )

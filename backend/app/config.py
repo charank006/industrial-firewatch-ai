@@ -135,6 +135,22 @@ class Settings(BaseSettings):
     # the analysis queue the moment the service returns.
     SURROUNDINGS_RETRY_MINUTES: int = 20
     SURROUNDINGS_RETRY_BATCH: int = 20
+    # --- risk and incident lifecycle --------------------------------------
+    # Score at or above which an event becomes a tracked incident.
+    #
+    # Measured before choosing: across 143 live events the risk score ranged
+    # 12.5 to 56.8, median 24.6. A 70 threshold selected ZERO events - the
+    # ceiling is low because most Indian detections are small agricultural
+    # burns, and because the historical-anomaly component is still cold
+    # (almost no location yet has a prior detection within 1 km to form a
+    # baseline from). 50 selects 4 of 143, about 3%, which is a sensible
+    # incident rate. Revisit as history accumulates and scores spread upward.
+    RISK_INCIDENT_THRESHOLD: float = 50.0
+    # How long an incident stays under active monitoring.
+    INCIDENT_MONITORING_HOURS: int = 48
+    # How often an active incident's risk is recomputed against fresh weather.
+    RISK_REFRESH_MINUTES: int = 30
+    RISK_REFRESH_BATCH: int = 40
     CONTAINMENT_SWEEP_HOURS: int = 6
     # Skip the first ingest at boot; useful in development so a restart does
     # not immediately spend FIRMS quota.

@@ -43,6 +43,7 @@ from app.services.classifier.feature_vector import build_feature_vector
 from app.services.classifier.scorer import classify, suggested_action
 from app.services.classifier.validity import assess_validity
 from app.services.impact_service import assess_impact
+from app.services.risk_service import RiskAssessment, assess_risk
 from app.services.osm import client as overpass
 from app.services.osm.features import SurroundingsFeatures, extract_features
 
@@ -239,6 +240,40 @@ async def persist_weather(
     )
 
 
+def _apply_risk(event: FireEvent, risk: RiskAssessment) -> None:
+    """Record the score and manage the incident lifecycle.
+
+    Crossing the threshold opens a 48-hour monitoring window. Falling back
+    below it does NOT immediately close the incident: a fire that dips for
+    one satellite pass has not stopped being an incident, and closing on the
+    first quiet reading would flap. The window expiring is what closes it.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    event.risk_score = risk.score
+    event.risk_level = risk.level
+    event.risk_components = risk.components
+    event.risk_updated_at = now
+
+    # A bounded trail, so an operator can see whether risk is climbing.
+    history = list(event.risk_history or [])
+    history.append({"at": now.isoformat(), "score": risk.score, "level": risk.level})
+    event.risk_history = history[-96:]  # 48 h at one reading every 30 min
+
+    if risk.score >= settings.RISK_INCIDENT_THRESHOLD:
+        event.is_actionable = True
+        # Each qualifying observation extends the window from now, so an
+        # event that keeps re-detecting stays tracked.
+        event.monitoring_until = now + datetime.timedelta(
+            hours=settings.INCIDENT_MONITORING_HOURS
+        )
+    elif not event.is_actionable:
+        # Explicit False, not None: the column default only applies on insert,
+        # so a freshly built event would otherwise carry a null through.
+        # Guarded on `not already actionable` so a single quiet reading cannot
+        # close an open incident - only the window expiring does that.
+        event.is_actionable = False
+
+
 async def classify_event(
     db: AsyncSession,
     event: FireEvent,
@@ -269,6 +304,12 @@ async def classify_event(
     impact["risk_level"] = assess_impact(
         prediction.prediction, prediction.severity, features
     )["risk_level"]
+
+    # Stage 3: how dangerous, asked separately from what it is. Validity can
+    # only scale this DOWN - an event we doubt is a fire cannot be a
+    # high-risk fire.
+    risk = assess_risk(prediction.prediction, features, validity.p_real)
+    _apply_risk(event, risk)
 
     action = suggested_action(prediction.prediction, prediction.severity, features)
     if not validity.is_assessable:
@@ -332,7 +373,13 @@ async def classify_event(
             notes=impact["notes"],
         )
     )
-    return {"prediction": prediction, "impact": impact, "features": features, "validity": validity}
+    return {
+        "prediction": prediction,
+        "impact": impact,
+        "features": features,
+        "validity": validity,
+        "risk": risk,
+    }
 
 
 async def apply_enrichment(
@@ -391,6 +438,9 @@ async def apply_enrichment(
         ),
         "validity": validity.verdict,
         "validity_pct": validity.confidence_pct,
+        "risk_score": outcome["risk"].score,
+        "risk_level": outcome["risk"].level,
+        "is_actionable": event.is_actionable,
         "prediction": prediction.prediction,
         "label": prediction.label,
         "confidence_pct": prediction.confidence_pct,

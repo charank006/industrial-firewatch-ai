@@ -17,15 +17,16 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy import select
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.config import settings
 from app.database.connection import get_sessionmaker
-from app.models.models import SeedRun
-from app.services import firms_service
+from app.models.models import FireEvent, FirePrediction, SeedRun
+from app.services import firms_service, weather_service
 from app.services.osm import client as overpass
+from app.services.risk_service import assess_risk
 from app.services.aoi_service import active_boundary_name, is_inside_aoi
-from app.services.analysis_service import drain_pending
+from app.services.analysis_service import _apply_risk, drain_pending
 from app.services.fire_event_service import mark_stale_events_contained, process_detections
 
 logger = logging.getLogger(__name__)
@@ -248,4 +249,101 @@ async def surroundings_retry_job(limit: Optional[int] = None) -> Dict[str, Any]:
         except Exception as exc:  # noqa: BLE001 - a scheduled job must not die
             await session.rollback()
             logger.exception("surroundings retry sweep failed")
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+async def risk_refresh_job(limit: Optional[int] = None) -> Dict[str, Any]:
+    """Recompute risk on active incidents against fresh conditions.
+
+    Detection is instantaneous; incident intelligence is continuous. An event
+    that qualified two hours ago may now sit under a rising wind, a dropping
+    humidity, or a longer dry spell, and the operator should see that without
+    waiting for the satellite to pass over again.
+
+    Only the ENVIRONMENTAL half is refreshed. Thermal and anomaly components
+    come from satellite observations, and inventing new ones between passes
+    would be fabricating measurements - the fire's radiative power is not
+    knowable until the next overpass.
+
+    Incidents whose monitoring window has expired are closed here.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    batch = limit or settings.RISK_REFRESH_BATCH
+    refreshed = 0
+    closed = 0
+
+    async with get_sessionmaker()() as session:
+        try:
+            # Close first, so an expired incident is not refreshed for nothing.
+            expired = await session.execute(
+                text(
+                    """
+                    UPDATE fire_events SET status = 'closed', is_actionable = false
+                     WHERE is_actionable = true
+                       AND monitoring_until IS NOT NULL
+                       AND monitoring_until < :now
+                    RETURNING id
+                    """
+                ),
+                {"now": now},
+            )
+            closed = len([row[0] for row in expired])
+
+            rows = (
+                await session.execute(
+                    select(FireEvent)
+                    .where(FireEvent.is_actionable.is_(True))
+                    .order_by(FireEvent.risk_score.desc())
+                    .limit(batch)
+                )
+            ).scalars().all()
+
+            for event in rows:
+                prediction = (
+                    await session.execute(
+                        select(FirePrediction)
+                        .where(FirePrediction.fire_event_id == event.id)
+                        .order_by(FirePrediction.id.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                if prediction is None or not prediction.feature_snapshot:
+                    continue
+
+                features = dict(prediction.feature_snapshot)
+                try:
+                    weather = await weather_service.fetch_weather_analysis(
+                        event.latitude, event.longitude, now
+                    )
+                except Exception:  # noqa: BLE001 - stale weather beats no refresh
+                    weather = None
+
+                if weather is not None:
+                    features.update({
+                        "wind_speed_ms": weather.current_wind_speed_ms,
+                        "wind_direction_deg": weather.current_wind_direction_deg,
+                        "vpd_kpa": weather.vpd_kpa,
+                        "vpd_anomaly_kpa": weather.vpd_anomaly_kpa,
+                        "dry_hours": weather.dry_hours,
+                        "precipitation_24h_mm": weather.precipitation_24h_mm,
+                        "weather_baseline_quality": weather.baseline_quality,
+                    })
+
+                risk = assess_risk(
+                    prediction.predicted_class, features, prediction.validity_p_real
+                )
+                _apply_risk(event, risk)
+                refreshed += 1
+
+            await session.commit()
+
+            if refreshed or closed:
+                logger.info(
+                    "risk refresh: %d incident(s) recomputed, %d closed", refreshed, closed
+                )
+            return {"ok": True, "refreshed": refreshed, "closed": closed}
+
+        except Exception as exc:  # noqa: BLE001 - a scheduled job must not die
+            await session.rollback()
+            logger.exception("risk refresh failed")
             return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}

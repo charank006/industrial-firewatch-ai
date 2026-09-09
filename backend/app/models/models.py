@@ -91,6 +91,21 @@ class FireEvent(Base):
     # Exists from Phase 2 so Phase 4's out-of-band analysis worker has a column
     # to drain: pending | analyzing | complete | failed
     analysis_status = Column(String, nullable=False, default="pending")
+
+    # --- operational risk and incident lifecycle --------------------------
+    # Risk is deliberately its own number, not a restatement of the class
+    # confidence: "94% sure this is a crop fire, and it is not dangerous" and
+    # "75% sure this is an industrial fire, and it is urgent" are both
+    # things the system has to be able to say.
+    risk_score = Column(Float, nullable=True)          # 0-100
+    risk_level = Column(String, nullable=True)         # LOW..EXTREME
+    risk_updated_at = Column(DateTime(timezone=True), nullable=True)
+    risk_components = Column(JSONB, nullable=True)
+    # Crosses the actionability threshold, so it is tracked as an incident
+    # rather than merely recorded as a detection.
+    is_actionable = Column(Boolean, nullable=False, default=False)
+    monitoring_until = Column(DateTime(timezone=True), nullable=True)
+    risk_history = Column(JSONB, nullable=True)        # [{at, score, level}]
     surroundings_status = Column(String, nullable=True)  # ok | sparse | unavailable
 
     location_name = Column(String, nullable=True)
