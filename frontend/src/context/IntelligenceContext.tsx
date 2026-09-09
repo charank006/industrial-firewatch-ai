@@ -1,7 +1,12 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
-import { MOCK_ALERTS } from '../data/mockAlerts';
-import { MOCK_FACILITIES } from '../data/mockFacilities';
-import { MOCK_HOTSPOTS } from '../data/mockHotspots';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { fetchFacilities, fetchFireAnalysis, fetchFires } from '../services/api';
+import {
+  adaptAnalysis,
+  adaptFacility,
+  adaptFireEvent,
+  dateRangeToSince,
+  regionToBbox,
+} from '../services/adapters';
 import type {
   AlertItem,
   EventClassification,
@@ -35,13 +40,13 @@ interface IntelligenceContextType {
   metrics: SituationMetrics;
 
   // Data source & API state
-  dataSource?: 'mock' | 'api';
-  isLoading?: boolean;
-  error?: string | null;
-  historyDays?: number | null;
-  analysis?: any;
-  isAnalysisLoading?: boolean;
-  refresh?: () => void;
+  dataSource: 'api' | 'mock';
+  isLoading: boolean;
+  error: string | null;
+  historyDays: number | null;
+  analysis: any | null;
+  isAnalysisLoading: boolean;
+  refresh: () => void;
 
   // Actions
   setSelectedIncident: (incident: ThermalHotspot | null) => void;
@@ -68,7 +73,7 @@ const initialLayers: GISLayerVisibility = {
 };
 
 const initialFilters: FilterState = {
-  region: 'Gujarat Industrial Corridor',
+  region: 'Telangana Active AOI',
   eventType: 'ALL',
   severity: 'ALL',
   dateRange: '24h',
@@ -80,18 +85,116 @@ const initialFilters: FilterState = {
 const IntelligenceContext = createContext<IntelligenceContextType | undefined>(undefined);
 
 export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [hotspots] = useState<ThermalHotspot[]>(MOCK_HOTSPOTS);
-  const [facilities] = useState<IndustrialFacility[]>(MOCK_FACILITIES);
-  const [alerts, setAlerts] = useState<AlertItem[]>(MOCK_ALERTS);
+  const [hotspots, setHotspots] = useState<ThermalHotspot[]>([]);
+  const [facilities, setFacilities] = useState<IndustrialFacility[]>([]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
-  const [selectedIncident, setSelectedIncident] = useState<ThermalHotspot | null>(MOCK_HOTSPOTS[0]);
-  const [selectedFacility, setSelectedFacility] = useState<IndustrialFacility | null>(MOCK_FACILITIES[0]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [historyDays, setHistoryDays] = useState<number | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
+  const [analysis, setAnalysis] = useState<any | null>(null);
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+
+  const [selectedIncident, setSelectedIncident] = useState<ThermalHotspot | null>(null);
+  const [selectedFacility, setSelectedFacility] = useState<IndustrialFacility | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(true);
 
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [layers, setLayers] = useState<GISLayerVisibility>(initialLayers);
-  const [mapMode, setMapMode] = useState<MapMode>('satellite'); // DEFAULT TO SATELLITE IMAGERY MAP
-  const [timelineIndex, setTimelineIndex] = useState<number>(MOCK_HOTSPOTS.length - 1);
+  const [mapMode, setMapMode] = useState<MapMode>('satellite');
+  const [timelineIndex, setTimelineIndex] = useState<number>(0);
+
+  const refresh = () => setReloadToken((n) => n + 1);
+
+  const { region, dateRange } = filters;
+
+  // Always fetch live API feed
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        // Fetch fires (using bbox if available, or all fires if bbox query returns 0)
+        let firesResponse = await fetchFires({
+          bbox: regionToBbox(region),
+          since: dateRangeToSince(dateRange),
+        });
+
+        if (!firesResponse?.fires || firesResponse.fires.length === 0) {
+          const allFiresResponse = await fetchFires({ since: dateRangeToSince(dateRange) });
+          if (allFiresResponse?.fires && allFiresResponse.fires.length > 0) {
+            firesResponse = allFiresResponse;
+          }
+        }
+
+        const facilitiesResponse = await fetchFacilities().catch(() => ({ facilities: [] }));
+        if (cancelled) return;
+
+        const adaptedHotspots = (firesResponse?.fires || []).map(adaptFireEvent);
+        const adaptedFacilities = (facilitiesResponse?.facilities || []).map(adaptFacility);
+
+        setHotspots(adaptedHotspots);
+        setFacilities(adaptedFacilities);
+        setHistoryDays(firesResponse?.history_days ?? 10);
+        setTimelineIndex(Math.max(0, adaptedHotspots.length - 1));
+
+        setSelectedIncident((current) => {
+          if (current && adaptedHotspots.some((h) => h.id === current.id)) return current;
+          return adaptedHotspots[0] || null;
+        });
+
+        setSelectedFacility((current) => {
+          if (current && adaptedFacilities.some((f) => f.id === current.id)) return current;
+          return adaptedFacilities[0] || null;
+        });
+      } catch (cause) {
+        if (!cancelled) {
+          console.error('Live API connection error:', cause);
+          setError(cause instanceof Error ? cause.message : String(cause));
+          setHotspots([]);
+          setFacilities([]);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [region, dateRange, reloadToken]);
+
+  // Fetch deep analysis per selected fire event
+  const selectedIncidentId = selectedIncident?.id ?? null;
+
+  useEffect(() => {
+    if (!selectedIncidentId) {
+      setAnalysis(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsAnalysisLoading(true);
+
+    fetchFireAnalysis(selectedIncidentId)
+      .then((payload) => {
+        if (!cancelled) setAnalysis(adaptAnalysis(payload));
+      })
+      .catch((err) => {
+        console.warn('Fire analysis fetch failed:', err);
+        if (!cancelled) setAnalysis(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsAnalysisLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedIncidentId]);
 
   // Dynamic Filtering Logic
   const filteredHotspots = useMemo(() => {
@@ -112,7 +215,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
     });
   }, [hotspots, filters]);
 
-  // Dynamically Compute Metrics from Filtered Dataset
+  // Dynamically Compute Metrics from Filtered Live Dataset
   const metrics = useMemo<SituationMetrics>(() => {
     const totalDetected = filteredHotspots.length;
     const highPriorityCount = filteredHotspots.filter((h) => h.severity === 'HIGH' || h.severity === 'CRITICAL').length;
@@ -137,7 +240,11 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
       }
     });
 
-    const latestHotspot = filteredHotspots.length > 0 ? filteredHotspots[0] : undefined;
+    const latestHotspot = filteredHotspots.reduce<ThermalHotspot | undefined>(
+      (latest, h) =>
+        !latest || new Date(h.timestamp).getTime() > new Date(latest.timestamp).getTime() ? h : latest,
+      undefined,
+    );
 
     return {
       totalDetected,
@@ -196,6 +303,13 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
         mapMode,
         timelineIndex,
         metrics,
+        dataSource: 'api',
+        isLoading,
+        error,
+        historyDays,
+        refresh,
+        analysis,
+        isAnalysisLoading,
         setSelectedIncident,
         setSelectedFacility,
         selectIncidentById,

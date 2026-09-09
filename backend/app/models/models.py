@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 
+# pyrefly: ignore [missing-import]
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     JSON,
