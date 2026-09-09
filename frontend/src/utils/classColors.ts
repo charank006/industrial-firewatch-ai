@@ -1,25 +1,24 @@
-
 export const CLASS_COLOR: Record<string, string> = {
   'Persistent Thermal Source': '#A855F7',
-  'Industrial Fire': '#FF3B30',
-  'Routine Flare': '#FF6B22',
-  'Gas/Oil Flare': '#FF6B22',
-  'Forest Fire': '#2FBF71',
-  'Agricultural Burning': '#FFB020',
-  'Gas/Oil': '#A855F7',
-  'Urban': '#EC4899',
-  'Urban/Other': '#EC4899',
-  'Mining / Extraction': '#8B6F47',
-  'Unknown Anomaly': '#66768A',
-  industrial_fire: '#FF3B30',
-  gas_oil_flare: '#FF6B22',
-  forest_fire: '#2FBF71',
-  agricultural_burning: '#FFB020',
-  urban_other: '#EC4899',
-  mining: '#8B6F47',
+  'Industrial Fire': '#EF4444',
+  'Routine Flare': '#F97316',
+  'Gas/Oil Flare': '#F97316',
+  'Forest Fire': '#10B981',
+  'Agricultural Burning': '#F59E0B',
+  'Gas/Oil': '#8B5CF6',
+  'Urban': '#06B6D4',
+  'Urban/Other': '#06B6D4',
+  'Mining / Extraction': '#D97706',
+  'Unknown Anomaly': '#64748B',
+  industrial_fire: '#EF4444',
+  gas_oil_flare: '#F97316',
+  forest_fire: '#10B981',
+  agricultural_burning: '#F59E0B',
+  urban_other: '#06B6D4',
+  mining: '#D97706',
 };
 
-export const UNCLASSIFIED_COLOR = '#66768A';
+export const UNCLASSIFIED_COLOR = '#64748B';
 
 export function classColor(classification: string): string {
   return CLASS_COLOR[classification] ?? UNCLASSIFIED_COLOR;
