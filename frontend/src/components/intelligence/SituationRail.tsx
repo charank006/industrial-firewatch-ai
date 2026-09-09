@@ -1,32 +1,80 @@
-import { Activity } from 'lucide-react';
+import { Activity, RefreshCw } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 import type { EventClassification } from '../../types';
 
 export const SituationRail: React.FC = () => {
-  const { metrics, filteredHotspots, selectedIncident, selectIncidentById, filters, setFilters } = useIntelligence();
+  const {
+    metrics,
+    filteredHotspots,
+    selectedIncident,
+    selectIncidentById,
+    filters,
+    setFilters,
+    isSyncing,
+    syncLiveFIRMS,
+  } = useIntelligence();
 
   const EVENT_TYPES: EventClassification[] = [
     'Industrial Fire',
     'Routine Flare',
     'Forest Fire',
     'Agricultural Burning',
+    'Persistent Thermal Source',
     'Unknown Anomaly',
   ];
+
+  const getEventBarColor = (type: EventClassification) => {
+    switch (type) {
+      case 'Industrial Fire':
+        return 'bg-red-500';
+      case 'Routine Flare':
+        return 'bg-amber-500';
+      case 'Forest Fire':
+        return 'bg-emerald-500';
+      case 'Agricultural Burning':
+        return 'bg-yellow-500';
+      case 'Persistent Thermal Source':
+        return 'bg-purple-500';
+      case 'Urban':
+        return 'bg-cyan-400';
+      default:
+        return 'bg-slate-400';
+    }
+  };
+
+  const sectorName = filters.region === 'ALL' || filters.region.toLowerCase().includes('all')
+    ? 'PAN-INDIA'
+    : filters.region.replace(/\(.*\)/, '').trim().toUpperCase();
+
+  const sensorName = selectedIncident?.satellite
+    ? selectedIncident.satellite.toUpperCase()
+    : 'VIIRS / MODIS NRT';
 
   return (
     <div className="w-full h-full flex flex-col font-mono text-xs text-slate-200 select-none overflow-hidden">
       
       {/* Header */}
-      <div className="p-4 border-b border-white/10 flex items-center justify-between shrink-0 bg-white/[0.02]">
+      <div className="p-3.5 border-b border-white/10 flex items-center justify-between shrink-0 bg-white/[0.02]">
         <div className="flex items-center space-x-2">
           <Activity className="w-4 h-4 text-cyan-400" />
           <span className="font-bold text-white uppercase tracking-wider text-xs">
-            Active Anomaly Queue
+            Live Anomaly Queue
           </span>
         </div>
-        <span className="text-[10px] font-bold px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/40 rounded-full">
-          {filteredHotspots.length} ACTIVE
-        </span>
+        <div className="flex items-center space-x-1.5">
+          <button
+            id="rail-sync-btn"
+            onClick={syncLiveFIRMS}
+            disabled={isSyncing}
+            title="Sync with NASA FIRMS satellite constellation"
+            className="p-1 rounded bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-500/40 text-cyan-300 transition cursor-pointer"
+          >
+            <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-cyan-200' : ''}`} />
+          </button>
+          <span className="text-[10px] font-bold px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/40 rounded-full">
+            {filteredHotspots.length} ACTIVE
+          </span>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -87,17 +135,7 @@ export const SituationRail: React.FC = () => {
                   </div>
                   <div className="w-full h-1 bg-black/60 rounded-full overflow-hidden">
                     <div
-                      className={`h-full transition-all duration-300 ${
-                        type === 'Industrial Fire'
-                          ? 'bg-red-500'
-                          : type === 'Routine Flare'
-                          ? 'bg-amber-500'
-                          : type === 'Forest Fire'
-                          ? 'bg-orange-500'
-                          : type === 'Agricultural Burning'
-                          ? 'bg-emerald-500'
-                          : 'bg-slate-400'
-                      }`}
+                      className={`h-full transition-all duration-300 ${getEventBarColor(type)}`}
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -157,10 +195,10 @@ export const SituationRail: React.FC = () => {
 
       </div>
 
-      {/* Summary Footer */}
+      {/* Dynamic Summary Footer */}
       <div className="p-3 bg-black/50 border-t border-white/10 font-mono text-[10px] text-slate-400 flex justify-between items-center shrink-0">
-        <span>SECTOR: <strong className="text-white">GUJARAT 01</strong></span>
-        <span>SENSOR: <strong className="text-cyan-400">NOAA-20 VIIRS</strong></span>
+        <span>SECTOR: <strong className="text-white">{sectorName}</strong></span>
+        <span>SENSOR: <strong className="text-cyan-400">{sensorName}</strong></span>
       </div>
 
     </div>

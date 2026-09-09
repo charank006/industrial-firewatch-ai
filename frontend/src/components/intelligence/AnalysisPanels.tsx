@@ -16,11 +16,9 @@ import {
   CloudDrizzle,
   Factory,
   Info,
-  Trees,
   Wind,
 } from 'lucide-react';
 import type {
-  FireClassId,
   ImpactDetail,
   PredictionDetail,
   SurroundingsDetail,
@@ -28,24 +26,36 @@ import type {
 } from '../../types';
 import { bearingToCompass, signed } from './formatters';
 
-const CLASS_COLOUR: Record<FireClassId, string> = {
+const CLASS_COLOUR: Record<string, string> = {
+  persistent_thermal_source: '#A855F7',
+  forest_fire: '#10B981',
+  agricultural_burning: '#FFB020',
+  industrial_fire: '#FF3B30',
+  gas_oil_flare: '#FF6B22',
+  urban_other: '#38BDF8',
+  unknown: '#66768A',
   industrial: '#FF3B30',
   flare: '#FF6B22',
-  forest: '#FF6B22',
+  forest: '#10B981',
   agriculture: '#FFB020',
-  gas_oil: '#A855F7',
-  urban: '#EC4899',
-  unknown: '#66768A',
+  gas_oil: '#FF6B22',
+  urban: '#38BDF8',
 };
 
-const CLASS_LABEL: Record<FireClassId, string> = {
+const CLASS_LABEL: Record<string, string> = {
+  persistent_thermal_source: 'Persistent Thermal Source',
+  forest_fire: 'Forest Fire',
+  agricultural_burning: 'Agricultural Burning',
+  industrial_fire: 'Industrial Fire',
+  gas_oil_flare: 'Routine Flare / Gas Oil',
+  urban_other: 'Urban / Other',
+  unknown: 'Unknown Anomaly',
   industrial: 'Industrial Fire',
   flare: 'Routine Flare',
   forest: 'Forest Fire',
   agriculture: 'Agricultural Burning',
-  gas_oil: 'Gas/Oil',
+  gas_oil: 'Gas/Oil Flare',
   urban: 'Urban',
-  unknown: 'Unknown Anomaly',
 };
 
 export const PanelShell: React.FC<{
@@ -153,36 +163,30 @@ export const WeatherPanel: React.FC<{ weather: WeatherDetail | null }> = ({ weat
           }
         />
         <Metric
-          label="Dryness (VPD)"
+          label="VPD"
           value={weather.vpdKpa !== null ? `${weather.vpdKpa.toFixed(2)} kPa` : '—'}
+          accent={weather.vpdKpa !== null && weather.vpdKpa >= 3 ? 'text-[#F04438]' : 'text-slate-100'}
         />
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-[#A7B4C1]">
         <span>
-          BASELINE SAMPLES{' '}
-          <strong className="text-slate-200">
-            {weather.baselineSamples}/{weather.baselineDaysRequested}
-          </strong>
+          24H RAIN <strong className="text-slate-200">{(weather.precipitation24hMm ?? 0).toFixed(1)} mm</strong>
         </span>
-        {weather.dryHours !== null && (
-          <span>
-            DRY HOURS <strong className="text-slate-200">{weather.dryHours}</strong>
-          </span>
-        )}
-        {weather.precipitation24hMm !== null && (
-          <span>
-            RAIN 24H <strong className="text-slate-200">{weather.precipitation24hMm} mm</strong>
-          </span>
-        )}
+        <span>
+          72H RAIN <strong className="text-slate-200">{(weather.precipitation72hMm ?? 0).toFixed(1)} mm</strong>
+        </span>
+        <span>
+          DRY HOURS <strong className="text-slate-200">{weather.dryHours ?? 0} h</strong>
+        </span>
         {weather.localHour && (
           <span>
-            LOCAL HOUR <strong className="text-slate-200">{weather.localHour.slice(11)}</strong>
+            LOCAL HOUR <strong className="text-slate-200">{weather.localHour} ({weather.timezone ?? 'UTC'})</strong>
           </span>
         )}
       </div>
 
-      {/* Spec Rule 2 - stated wherever the anomaly is shown. */}
+      {/* Spec Rule 2 - weather anomaly is supporting context, not fire proof. */}
       <Caveat>{weather.interpretation}</Caveat>
     </PanelShell>
   );
@@ -195,48 +199,18 @@ export const SurroundingsPanel: React.FC<{ surroundings: SurroundingsDetail | nu
 }) => {
   if (!surroundings) return null;
 
-  const areas: Array<[string, number | null]> = [
-    ['Industrial', surroundings.industrialAreaKm2],
-    ['Forest', surroundings.forestAreaKm2],
-    ['Farmland', surroundings.farmlandAreaKm2],
-    ['Residential', surroundings.residentialAreaKm2],
-    ['Water', surroundings.waterAreaKm2],
-  ];
-  const discArea = Math.PI * (surroundings.radiusM / 1000) ** 2;
-
   return (
     <PanelShell
-      title={`Surroundings — ${(surroundings.radiusM / 1000).toFixed(0)} km Radius`}
-      icon={<Trees className="w-3 h-3" />}
+      title={`Surroundings (${(surroundings.radiusM / 1000).toFixed(0)} km radius)`}
+      icon={<Factory className="w-3 h-3" />}
       badge={<QualityBadge quality={surroundings.osmCoverage} />}
     >
-      <div className="space-y-1.5">
-        {areas.map(([label, value]) => {
-          const pct = value !== null && discArea > 0 ? Math.min(100, (value / discArea) * 100) : 0;
-          return (
-            <div key={label} className="space-y-0.5">
-              <div className="flex justify-between text-[10px] font-mono">
-                <span className="text-[#A7B4C1]">{label}</span>
-                <span className="text-slate-200">
-                  {value !== null ? `${value.toFixed(2)} km² (${pct.toFixed(0)}%)` : '—'}
-                </span>
-              </div>
-              <div className="h-1 bg-[#0D151E] rounded overflow-hidden">
-                <div className="h-full bg-[#3DB7D9]" style={{ width: `${pct}%` }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 pt-1">
+      <div className="grid grid-cols-3 gap-2">
         <Metric label="Factories" value={surroundings.factoriesWithin1km ?? '—'} />
         <Metric
-          label="Gas / Oil"
+          label="Gas Facilities"
           value={surroundings.gasFacilitiesWithin1km ?? '—'}
-          accent={
-            (surroundings.gasFacilitiesWithin1km ?? 0) > 0 ? 'text-[#A855F7]' : 'text-slate-100'
-          }
+          accent={(surroundings.gasFacilitiesWithin1km ?? 0) > 0 ? 'text-[#E8A93A]' : 'text-slate-100'}
         />
         <Metric label="Power" value={surroundings.powerInfraWithin1km ?? '—'} />
         <Metric label="Buildings" value={surroundings.buildingCount ?? '—'} />
@@ -279,13 +253,57 @@ export const ProbabilityPanel: React.FC<{ prediction: PredictionDetail | null }>
 }) => {
   if (!prediction) return null;
 
-  const ranked = (Object.entries(prediction.probabilities) as Array<[FireClassId, number]>).sort(
-    (a, b) => b[1] - a[1],
-  );
+  const isPersistent = prediction.prediction === ('persistent_thermal_source' as any) || prediction.modelKind === 'persistence_filter';
+
+  if (isPersistent) {
+    return (
+      <PanelShell
+        title="Source Classification"
+        icon={<AlertTriangle className="w-3 h-3 text-purple-400" />}
+        badge={
+          <span className="px-1.5 py-0.5 text-[9px] font-mono rounded border bg-purple-500/15 text-purple-300 border-purple-500/40">
+            PERSISTENT SOURCE
+          </span>
+        }
+      >
+        <div className="bg-purple-950/30 border border-purple-500/30 rounded p-3 space-y-1.5 font-mono">
+          <div className="flex items-center gap-2 text-purple-200 font-semibold text-xs">
+            <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
+            7-Day Persistence Pre-Filter: Passed
+          </div>
+          <p className="text-[11px] text-purple-200/90 leading-relaxed">
+            Continuous thermal activity confirmed across 5+ days in the 7-day observation window within 500m radius.
+          </p>
+          <div className="pt-1 text-[10px] text-purple-300/80 border-t border-purple-500/20">
+            <strong>Architecture Decision:</strong> LightGBM ML Classifier was <em>bypassed</em> because persistent thermal sources represent routine flare stacks or continuous industrial furnaces.
+          </div>
+        </div>
+      </PanelShell>
+    );
+  }
+
+  // Canonical classes to show (ignoring legacy duplicate keys if both exist)
+  const canonicalOrder: string[] = [
+    'forest_fire',
+    'agricultural_burning',
+    'industrial_fire',
+    'gas_oil_flare',
+    'urban_other',
+    'unknown',
+  ];
+
+  const rawEntries = Object.entries(prediction.probabilities || {});
+  // Prefer canonical keys if available, otherwise fallback to whatever exists
+  const hasCanonical = rawEntries.some(([k]) => canonicalOrder.includes(k));
+  const filteredEntries = hasCanonical
+    ? rawEntries.filter(([k]) => canonicalOrder.includes(k))
+    : rawEntries;
+
+  const ranked = (filteredEntries as Array<[string, number]>).sort((a, b) => b[1] - a[1]);
 
   return (
     <PanelShell
-      title="Source Classification"
+      title="LightGBM Multiclass ML Probabilities"
       icon={<AlertTriangle className="w-3 h-3" />}
       badge={
         <span className="px-1.5 py-0.5 text-[9px] font-mono rounded border bg-[#3DB7D9]/15 text-[#3DB7D9] border-[#3DB7D9]/40">
@@ -295,12 +313,12 @@ export const ProbabilityPanel: React.FC<{ prediction: PredictionDetail | null }>
     >
       <div className="space-y-1.5">
         {ranked.map(([cls, probability]) => {
-          const isTop = cls === prediction.prediction;
+          const isTop = cls === prediction.prediction || CLASS_LABEL[cls] === prediction.label;
           return (
             <div key={cls} className="space-y-0.5">
               <div className="flex justify-between text-[10px] font-mono">
                 <span className={isTop ? 'text-slate-100 font-semibold' : 'text-[#A7B4C1]'}>
-                  {CLASS_LABEL[cls]}
+                  {CLASS_LABEL[cls] || cls}
                 </span>
                 <span className={isTop ? 'text-slate-100 font-semibold' : 'text-[#A7B4C1]'}>
                   {(probability * 100).toFixed(1)}%
@@ -311,7 +329,7 @@ export const ProbabilityPanel: React.FC<{ prediction: PredictionDetail | null }>
                   className="h-full rounded transition-all"
                   style={{
                     width: `${Math.max(1, probability * 100)}%`,
-                    backgroundColor: CLASS_COLOUR[cls],
+                    backgroundColor: CLASS_COLOUR[cls] || '#66768A',
                     opacity: isTop ? 1 : 0.45,
                   }}
                 />
@@ -332,7 +350,7 @@ export const ProbabilityPanel: React.FC<{ prediction: PredictionDetail | null }>
       </div>
 
       {/* Spec Rule 8 - probabilities, never a determination of cause. */}
-      <Caveat>{prediction.interpretation}</Caveat>
+      <Caveat>{prediction.interpretation || 'Most probable source category, derived from 32-feature LightGBM model.'}</Caveat>
     </PanelShell>
   );
 };

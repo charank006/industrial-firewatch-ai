@@ -9,12 +9,13 @@
 import type { EventClassification } from '../types';
 
 export const CLASS_COLOR: Record<EventClassification, string> = {
+  'Persistent Thermal Source': '#A855F7',
   'Industrial Fire': '#FF3B30',
   'Routine Flare': '#FF6B22',
-  'Forest Fire': '#FF6B22',
+  'Forest Fire': '#10B981',
   'Agricultural Burning': '#FFB020',
-  'Gas/Oil': '#A855F7',
-  'Urban': '#EC4899',
+  'Gas/Oil': '#F97316',
+  'Urban': '#38BDF8',
   'Unknown Anomaly': '#66768A',
 };
 

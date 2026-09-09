@@ -35,11 +35,18 @@ import type {
  * Backend class id -> UI label. Mirrored on the backend; the two must agree.
  */
 export const CLASS_LABEL: Record<string, EventClassification> = {
+  persistent_thermal_source: 'Persistent Thermal Source',
+  'Persistent Thermal Source': 'Persistent Thermal Source',
+  industrial_fire: 'Industrial Fire',
   industrial: 'Industrial Fire',
+  gas_oil_flare: 'Routine Flare',
   flare: 'Routine Flare',
+  forest_fire: 'Forest Fire',
   forest: 'Forest Fire',
+  agricultural_burning: 'Agricultural Burning',
   agriculture: 'Agricultural Burning',
   gas_oil: 'Gas/Oil',
+  urban_other: 'Urban',
   urban: 'Urban',
   unknown: 'Unknown Anomaly',
 };
@@ -85,6 +92,13 @@ export function adaptReasoningStep(step: ApiReasoningStep): ReasoningStep {
 
 export function adaptFireEvent(event: ApiFireEvent): ThermalHotspot {
   const timestamp = event.last_detected ?? new Date().toISOString();
+  const isPersistent = Boolean(event.is_persistent);
+
+  const classification: EventClassification = isPersistent
+    ? 'Persistent Thermal Source'
+    : event.prediction
+    ? (CLASS_LABEL[event.prediction] ?? 'Unknown Anomaly')
+    : 'Unknown Anomaly';
 
   return {
     id: event.fire_event_id,
@@ -92,11 +106,7 @@ export function adaptFireEvent(event: ApiFireEvent): ThermalHotspot {
     lng: event.longitude,
     frpMw: event.frp_latest_mw,
     brightnessK: event.brightness_k ?? 0,
-    // `confidence` means CLASSIFICATION confidence - which is what every
-    // component labels it. Until Phase 5 there is none, so it reads 0 rather
-    // than borrowing NASA's detection confidence and quietly meaning
-    // something else.
-    confidence: event.classification_confidence_pct ?? 0,
+    confidence: isPersistent ? 100 : (event.classification_confidence_pct ?? 0),
     detectionConfidence: event.detection_confidence_pct ?? undefined,
     timestamp,
     timeFormatted: event.time_formatted ?? '',
@@ -105,14 +115,13 @@ export function adaptFireEvent(event: ApiFireEvent): ThermalHotspot {
     facilityDistanceKm: event.nearest_facility_distance_km ?? 0,
     nearestFacilityId: event.nearest_facility_id ?? '',
     nearestFacilityName: event.nearest_facility_name ?? 'Unassigned',
-    classification: event.prediction
-      ? (CLASS_LABEL[event.prediction] ?? 'Unknown Anomaly')
-      : 'Unknown Anomaly',
-    // Validity is a SEPARATE verdict from class and must never be folded into
-    // it: "is this a fire at all" answered before "what kind of fire".
+    classification,
+    isPersistent,
+    activeDays7d: event.active_days_7d ?? 0,
+    persistenceStatus: event.persistence_status ?? (isPersistent ? 'Persistent Thermal Source' : 'Non-Persistent Event'),
     validityVerdict: verdictOrUndefined(event.validity?.verdict),
     validityConfidencePct: event.validity?.confidence_pct,
-    severity: oneOf(SEVERITY_VALUES, event.severity, 'MEDIUM'),
+    severity: isPersistent ? 'LOW' : oneOf(SEVERITY_VALUES, event.severity, 'MEDIUM'),
     historicalOccurrenceCount: event.recurrence_count,
     firstSeenDate: (event.first_detected ?? timestamp).slice(0, 10),
     reasoningSteps: event.reasoning_steps.map(adaptReasoningStep),
@@ -157,11 +166,11 @@ export function dateRangeToSince(range: string, now: Date = new Date()): string 
  * applied to anything; wiring it is additive.
  */
 export const REGION_BBOX: Record<string, string> = {
-  // The AOI the ingest worker actually polls FIRMS for
-  // (backend FIRMS_AOI_BBOX). Anything else returns an empty map until the
-  // AOI is widened, so this is the default.
+  'All India (Pan-India)': '68.0,6.5,97.5,37.5',
   'Telangana Active AOI': '77.2,15.8,81.4,19.95',
   'Gujarat Industrial Corridor': '68.0,20.0,75.0,25.0',
+  'Punjab / Northern Stubble Belt': '74.0,28.5,78.0,32.0',
+  'Central India Forests (MP/Odisha)': '76.0,20.0,85.0,25.0',
   'Permian Petrochemical Zone': '-104.5,29.5,-100.5,33.5',
   'Rhine Industrial Belt': '5.8,49.0,9.5,52.0',
 };

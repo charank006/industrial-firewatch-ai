@@ -26,31 +26,35 @@ const MapController: React.FC<{ center: [number, number]; zoom?: number }> = ({ 
 const createHotspotIcon = (classification: string, severity: string, isSelected: boolean) => {
   let colorHex = '#E9A23B';
 
-  if (classification === 'Industrial Fire') {
+  if (classification === 'Persistent Thermal Source') {
+    colorHex = '#A855F7';
+  } else if (classification === 'Industrial Fire') {
     colorHex = '#E5484D';
-  } else if (classification === 'Routine Flare') {
+  } else if (classification === 'Routine Flare' || classification === 'Gas/Oil') {
     colorHex = '#F97316';
   } else if (classification === 'Forest Fire') {
-    colorHex = '#F97316';
+    colorHex = '#10B981';
   } else if (classification === 'Agricultural Burning') {
     colorHex = '#E9A23B';
+  } else if (classification === 'Urban') {
+    colorHex = '#38BDF8';
   } else {
     colorHex = '#94A3B8';
   }
 
-  const dotSize = isSelected ? '14px' : '10px';
-  const ringSize = isSelected ? '26px' : '18px';
+  const dotSize = isSelected ? '7px' : '4.5px';
+  const ringSize = isSelected ? '16px' : '9px';
 
   return L.divIcon({
     className: 'custom-gis-marker',
     html: `
       <div style="position: relative; display: flex; align-items: center; justify-content: center; width: ${ringSize}; height: ${ringSize};">
-        <div style="position: absolute; width: ${ringSize}; height: ${ringSize}; border-radius: 50%; background-color: ${colorHex}; opacity: 0.25; ${severity === 'HIGH' || severity === 'CRITICAL' ? 'animation: subtle-pulse 2s infinite;' : ''}"></div>
-        <div style="width: ${dotSize}; height: ${dotSize}; border-radius: 50%; background-color: ${colorHex}; border: 1.5px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.6);"></div>
+        <div style="position: absolute; width: ${ringSize}; height: ${ringSize}; border-radius: 50%; background-color: ${colorHex}; opacity: 0.25; ${isSelected || severity === 'CRITICAL' ? 'animation: subtle-pulse 2s infinite;' : ''}"></div>
+        <div style="width: ${dotSize}; height: ${dotSize}; border-radius: 50%; background-color: ${colorHex}; border: 0.8px solid #ffffff; box-shadow: 0 1px 4px rgba(0,0,0,0.6);"></div>
       </div>
     `,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
   });
 };
 
@@ -65,13 +69,12 @@ const createFacilityIcon = (status: string, isSelected: boolean) => {
   return L.divIcon({
     className: 'custom-gis-facility-marker',
     html: `
-      <div style="display: flex; align-items: center; gap: 6px; padding: 3px 6px; background-color: rgba(11, 17, 26, 0.92); border: 1px solid ${isSelected ? '#3BB7E6' : '#243244'}; border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
-        <div style="width: 8px; height: 8px; border-radius: 2px; background-color: ${statusColor};"></div>
-        <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; color: #f1f5f9;">🏭</span>
+      <div style="display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; background-color: rgba(11, 17, 26, 0.92); border: 1px solid ${isSelected ? '#3BB7E6' : '#243244'}; border-radius: 3px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);">
+        <div style="width: 6px; height: 6px; border-radius: 1.5px; background-color: ${statusColor};"></div>
       </div>
     `,
-    iconSize: [60, 20],
-    iconAnchor: [30, 10],
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
   });
 };
 
@@ -110,7 +113,7 @@ export const GISMap: React.FC<{ height?: string }> = ({ height = 'h-full' }) => 
   const defaultCenter: [number, number] = useMemo(() => {
     if (selectedIncident) return [selectedIncident.lat, selectedIncident.lng];
     if (selectedFacility) return [selectedFacility.lat, selectedFacility.lng];
-    return [21.1702, 72.8311];
+    return [21.5937, 78.9629];
   }, [selectedIncident, selectedFacility]);
 
   const currentTile = BASEMAP_TILES[mapMode] || BASEMAP_TILES.dark;
@@ -179,15 +182,27 @@ export const GISMap: React.FC<{ height?: string }> = ({ height = 'h-full' }) => 
                 }}
               >
                 <Popup>
-                  <div className="p-1 font-mono text-xs text-slate-200 space-y-1">
+                  <div className="p-1.5 font-mono text-xs text-slate-200 space-y-1 min-w-[210px]">
                     <div className="flex items-center justify-between border-b border-[#243244] pb-1">
                       <span className="font-bold text-[#2FA8D8]">{hotspot.id}</span>
-                      <span className="text-[9px] text-[#E5484D] font-bold">{hotspot.classification}</span>
+                      <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 font-bold">{hotspot.classification}</span>
                     </div>
-                    <p className="text-[10px] text-slate-300">{hotspot.locationName}</p>
-                    <div className="grid grid-cols-2 gap-2 text-[10px] pt-1">
+                    <div className="text-[10px] text-slate-300">
+                      <strong>COORDS:</strong> {hotspot.lat.toFixed(4)}°N, {hotspot.lng.toFixed(4)}°E
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      <strong>TIME:</strong> {hotspot.timeFormatted} ({hotspot.dayNight === 'D' ? 'Day' : 'Night'})
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[10px] pt-0.5">
                       <div>FRP: <strong className="text-[#E9A23B]">{hotspot.frpMw} MW</strong></div>
-                      <div>Confidence: <strong className="text-[#2FBF71]">{hotspot.confidence}%</strong></div>
+                      <div>Temp: <strong className="text-amber-400">{hotspot.brightnessK} K</strong></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div>Conf: <strong className="text-[#2FBF71]">{hotspot.confidence}%</strong></div>
+                      <div>Audit: <strong className="text-purple-400">{hotspot.activeDays7d ?? 1}/7d</strong></div>
+                    </div>
+                    <div className="text-[9.5px] text-slate-400 border-t border-white/10 pt-1">
+                      🏭 {hotspot.nearestFacilityName} ({Math.round(hotspot.facilityDistanceKm * 1000)}m)
                     </div>
                   </div>
                 </Popup>

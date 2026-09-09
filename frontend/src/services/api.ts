@@ -83,6 +83,9 @@ export interface ApiFireEvent {
   frp_mean_mw: number;
   brightness_k: number | null;
   detection_confidence_pct: number | null;
+  is_persistent?: boolean;
+  active_days_7d?: number;
+  persistence_status?: string;
   prediction: string | null;
   classification_confidence_pct: number | null;
   probabilities: Record<string, number> | null;
@@ -195,4 +198,26 @@ export function fetchFireDetections(fireId: string) {
 
 export function fetchDashboardSummary() {
   return request<Record<string, any>>('/api/dashboard/summary');
+}
+
+export function fetchMlMetrics() {
+  return request<Record<string, any>>('/api/ml/metrics');
+}
+
+export function fetchMlSchema() {
+  return request<Record<string, any>>('/api/ml/schema');
+}
+
+export interface SyncFirmsResponse {
+  status: string;
+  message: string;
+  total_detections: number;
+  class_counts: Record<string, number>;
+  updated_at: string;
+}
+
+export function syncLiveFirms(dayRange: number = 3) {
+  return request<SyncFirmsResponse>(`/api/firms/sync?day_range=${dayRange}`, {
+    method: 'POST',
+  });
 }

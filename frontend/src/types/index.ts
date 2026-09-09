@@ -1,6 +1,7 @@
 export type SeverityLevel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 export type EventClassification =
+  | 'Persistent Thermal Source'
   | 'Industrial Fire'
   | 'Routine Flare'
   | 'Forest Fire'
@@ -18,8 +19,7 @@ export type LandCoverCategory =
   | 'Cropland'
   | 'Water Body'
   | 'Scrubland'
-  // Emitted when no OSM land-use class covers >20% of the 1km disc.
-  // Guessing a real category here would print a lie on the dashboard.
+  | 'Urban'
   | 'Unclassified';
 
 export interface ReasoningStep {
@@ -39,6 +39,9 @@ export interface ThermalHotspot {
   confidence: number;
   /** NASA FIRMS detection confidence 0-100. Normalised from VIIRS l|n|h or MODIS 0-100. */
   detectionConfidence?: number;
+  satellite?: string;
+  brightTi4?: number | null;
+  brightTi5?: number | null;
   timestamp: string;
   timeFormatted: string;
   dayNight: 'D' | 'N';
@@ -47,6 +50,9 @@ export interface ThermalHotspot {
   nearestFacilityId: string;
   nearestFacilityName: string;
   classification: EventClassification;
+  isPersistent?: boolean;
+  activeDays7d?: number;
+  persistenceStatus?: string;
   /**
    * Detection validity, kept deliberately apart from `classification`.
    * `classification` answers "what kind of fire"; this answers the prior

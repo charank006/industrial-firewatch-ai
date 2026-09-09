@@ -38,11 +38,14 @@ export const IncidentsPage: React.FC = () => {
     if (selectedFacilityFilter !== 'ALL' && item.nearestFacilityId !== selectedFacilityFilter) {
       return false;
     }
-    if (selectedDateFilter === '24H' && !item.timestamp.includes('2026-08-27')) {
-      return false;
-    }
-    if (selectedDateFilter === '7D' && !item.timestamp.includes('2026-08')) {
-      return false;
+    if (selectedDateFilter !== 'ALL') {
+      const itemDate = new Date(item.timestamp);
+      if (!isNaN(itemDate.getTime())) {
+        const diffHours = (Date.now() - itemDate.getTime()) / (1000 * 60 * 60);
+        if (selectedDateFilter === '24H' && diffHours > 48) return false;
+        if (selectedDateFilter === '7D' && diffHours > 7 * 24) return false;
+        if (selectedDateFilter === '30D' && diffHours > 30 * 24) return false;
+      }
     }
     return true;
   });

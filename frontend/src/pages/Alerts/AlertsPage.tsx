@@ -22,7 +22,7 @@ interface DeliveryRecord {
 export const AlertsPage: React.FC = () => {
   const { alerts, resolveAlert } = useIntelligence();
   const [searchParams] = useSearchParams();
-  const incidentParamId = searchParams.get('incidentId') || 'FW-1042';
+  const incidentParamId = searchParams.get('incidentId') || 'FIRMS-IN-0001';
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [channels, setChannels] = useState<{ fcm: boolean; sms: boolean; email: boolean }>({

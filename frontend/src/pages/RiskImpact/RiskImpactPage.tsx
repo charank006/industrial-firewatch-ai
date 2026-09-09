@@ -16,13 +16,13 @@ export const RiskImpactPage: React.FC = () => {
   const [radiusMeters, setRadiusMeters] = useState<number>(1000);
 
   const incident = selectedIncident || {
-    id: 'FW-BETA-1042',
+    id: 'FIRMS-IN-0001',
     classification: 'Industrial Fire',
-    severity: 'HIGH',
-    locationName: 'Surat Petrochemical Industrial Zone',
-    lat: 21.1738,
-    lng: 72.8345,
-    frpMw: 184.6,
+    severity: 'LOW',
+    locationName: 'Eastern India Mining & Smelter Belt',
+    lat: 23.6899,
+    lng: 87.114,
+    frpMw: 10.4,
   };
 
   const AFFECTED_USERS = [

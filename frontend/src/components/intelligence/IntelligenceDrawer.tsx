@@ -80,23 +80,59 @@ export const IntelligenceDrawer: React.FC = () => {
         {/* Header Profile */}
         <div className="border-b border-white/10 pb-3 flex justify-between items-start font-mono">
           <div>
-            <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-bold">
-              OBSERVATION PROFILE
-            </span>
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-bold">
+                LIVE FIRMS TELEMETRY
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                {currentIncident.id}
+              </span>
+            </div>
             <h3 className="text-base font-bold text-white mt-0.5 font-sans">
               {currentIncident.classification}
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">{currentIncident.locationName}</p>
+            {currentIncident.isPersistent ? (
+              <span className="inline-block mt-1 text-[9.5px] px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                ● 7-Day Persistent Source ({currentIncident.activeDays7d ?? 5}/7 days active)
+              </span>
+            ) : (
+              <span className="inline-block mt-1 text-[9.5px] px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                ● Stage 2 ML Classified ({currentIncident.activeDays7d ?? 1}/7 days active)
+              </span>
+            )}
           </div>
           <span
             className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
-              currentIncident.severity === 'HIGH' || currentIncident.severity === 'CRITICAL'
+              currentIncident.isPersistent
+                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                : currentIncident.severity === 'HIGH' || currentIncident.severity === 'CRITICAL'
                 ? 'bg-red-500/20 text-red-400 border border-red-500/40'
                 : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
             }`}
           >
-            {currentIncident.severity} PRIORITY
+            {currentIncident.isPersistent ? 'PERSISTENT' : `${currentIncident.severity} PRIORITY`}
           </span>
+        </div>
+
+        {/* Satellite Sensor & Geographic Telemetry Strip */}
+        <div className="p-2.5 bg-black/50 border border-cyan-500/30 rounded-lg font-mono text-[11px] space-y-1.5">
+          <div className="flex justify-between items-center text-slate-300 border-b border-white/5 pb-1">
+            <span className="text-slate-400">COORDINATES:</span>
+            <span className="text-cyan-300 font-bold">
+              {currentIncident.lat.toFixed(4)}° N, {currentIncident.lng.toFixed(4)}° E
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-slate-300 border-b border-white/5 pb-1">
+            <span className="text-slate-400">ACQUISITION TIME:</span>
+            <span className="text-white font-bold">{currentIncident.timeFormatted}</span>
+          </div>
+          <div className="flex justify-between items-center text-slate-300">
+            <span className="text-slate-400">ORBITAL PASS:</span>
+            <span className="text-amber-300 font-bold">
+              {currentIncident.dayNight === 'D' ? '☀️ Daytime Pass (Solar)' : '🌙 Nighttime Pass (Infrared)'}
+            </span>
+          </div>
         </div>
 
         {/* 4 Clean Metric Tiles */}
@@ -110,13 +146,13 @@ export const IntelligenceDrawer: React.FC = () => {
             <div className="text-base font-bold text-amber-400 mt-0.5">{currentIncident.brightnessK} K</div>
           </div>
           <div className="p-2.5 rounded-lg bg-black/40 border border-white/10">
-            <div className="text-[9.5px] text-slate-400 uppercase">VIIRS CONFIDENCE</div>
+            <div className="text-[9.5px] text-slate-400 uppercase">ML CONFIDENCE</div>
             <div className="text-base font-bold text-emerald-400 mt-0.5">{currentIncident.confidence}%</div>
           </div>
           <div className="p-2.5 rounded-lg bg-black/40 border border-white/10">
-            <div className="text-[9.5px] text-slate-400 uppercase">FACILITY OFFSET</div>
-            <div className="text-base font-bold text-white mt-0.5">
-              {Math.round(currentIncident.facilityDistanceKm * 1000)}m
+            <div className="text-[9.5px] text-slate-400 uppercase">7-DAY AUDIT</div>
+            <div className="text-base font-bold text-purple-400 mt-0.5">
+              {currentIncident.activeDays7d ?? (currentIncident.isPersistent ? 5 : 1)}/7 Days
             </div>
           </div>
         </div>
@@ -126,7 +162,7 @@ export const IntelligenceDrawer: React.FC = () => {
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider flex items-center space-x-1">
               <Factory className="w-3.5 h-3.5" />
-              <span>NEAREST FACILITY</span>
+              <span>NEAREST INDUSTRIAL FACILITY</span>
             </span>
             <button
               onClick={handleFacilityClick}
@@ -145,7 +181,7 @@ export const IntelligenceDrawer: React.FC = () => {
           </div>
         </div>
 
-        {/* Explainable Reasoning Flow - 3-Part Confidence Verification Breakdown */}
+        {/* Explainable Reasoning Flow - 4-Stage Confidence Verification Breakdown */}
         <ReasoningFlow
           steps={currentIncident.reasoningSteps}
           classification={currentIncident.classification}
