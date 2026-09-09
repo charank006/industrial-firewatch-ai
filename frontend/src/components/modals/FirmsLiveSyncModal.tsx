@@ -59,7 +59,7 @@ export const FirmsLiveSyncModal: React.FC = () => {
     } catch (err: any) {
       const msg = err?.message || '';
       if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('fetch')) {
-        setSyncError('Cannot connect to GeoFlare Backend server. Please ensure the backend is running on http://localhost:8000.');
+        setSyncError('Cannot connect to GeoFlare Backend server.');
       } else {
         setSyncError(msg || 'Satellite telemetry synchronization encountered an error.');
       }

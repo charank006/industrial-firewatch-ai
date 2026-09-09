@@ -2,7 +2,15 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { MOCK_ALERTS } from '../data/mockAlerts';
 import { MOCK_FACILITIES } from '../data/mockFacilities';
 import { MOCK_HOTSPOTS } from '../data/mockHotspots';
-import { DATA_SOURCE, fetchFacilities, fetchFireAnalysis, fetchFires } from '../services/api';
+import {
+  DATA_SOURCE,
+  fetchEvents,
+  fetchFacilities,
+  fetchFireAnalysis,
+  fetchFires,
+  fetchFirmsStatus as fetchFirmsStatusApi,
+  syncFirmsData,
+} from '../services/api';
 import {
   adaptAnalysis,
   adaptFacility,
@@ -390,24 +398,18 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const fetchFirmsStatus = async () => {
     try {
-      const res = await fetch('/api/firms/status');
-      if (res.ok) {
-        const data = await res.json();
-        setFirmsStatus(data);
-      }
+      const data = await fetchFirmsStatusApi();
+      setFirmsStatus(data);
     } catch {}
   };
 
   const refreshEvents = async () => {
     try {
-      const res = await fetch('/api/events');
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const mapped = data.map(mapBackendEventToHotspot);
-          setHotspots(mapped);
-          setSelectedIncident(mapped[0]);
-        }
+      const data = await fetchEvents();
+      if (Array.isArray(data) && data.length > 0) {
+        const mapped = data.map(mapBackendEventToHotspot);
+        setHotspots(mapped);
+        setSelectedIncident(mapped[0]);
       }
     } catch {}
   };
@@ -415,23 +417,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const syncNASAData = async (options?: FIRMSSyncOptions) => {
     setIsSyncingFirms(true);
     try {
-      const res = await fetch('/api/firms/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(options || {
-          sources: ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'],
-          area: 'IND',
-          days: 1,
-          clear_existing: true,
-        }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ detail: 'Failed to sync with NASA FIRMS' }));
-        throw new Error(errData.detail || 'Failed to sync with NASA FIRMS');
-      }
-
-      const syncResult = await res.json();
+      const syncResult = await syncFirmsData(options);
       await refreshEvents();
       await fetchFirmsStatus();
       return syncResult;

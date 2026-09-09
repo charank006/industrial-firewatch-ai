@@ -1,11 +1,15 @@
 /**
- * Backend HTTP client.
+ * Centralized API base URL configuration.
  *
- * In dev, Vite proxies `/api` to the backend on :8001, so VITE_API_BASE_URL
- * stays empty and there is no CORS involved at all.
+ * Checks VITE_API_URL, then VITE_API_BASE_URL, and falls back to
+ * http://127.0.0.1:8000 for local development.
  */
+const RAW_API_URL =
+  import.meta.env.VITE_API_URL?.trim() ||
+  import.meta.env.VITE_API_BASE_URL?.trim() ||
+  'http://127.0.0.1:8000';
 
-export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '';
+export const API_BASE_URL: string = RAW_API_URL.replace(/\/+$/, '');
 
 /**
  * Which data source the app runs on.
@@ -32,16 +36,19 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const formattedPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${API_BASE_URL}${formattedPath}`;
+
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(url, {
       headers: { Accept: 'application/json' },
       ...init,
     });
   } catch (cause) {
     throw new ApiError(
-      `Cannot reach the API at ${API_BASE_URL || 'the dev proxy'}${path}. Is the backend running on :8000?`,
+      `Cannot connect to GeoFlare Backend server. Failed to reach ${url}.`,
     );
   }
 
@@ -197,6 +204,32 @@ export function fetchFireDetections(fireId: string) {
   }>(`/api/fires/${encodeURIComponent(fireId)}/detections`);
 }
 
+import type { FIRMSSyncOptions, FIRMSSyncStatus } from '../types';
+
 export function fetchDashboardSummary() {
   return request<Record<string, any>>('/api/dashboard/summary');
 }
+
+export function fetchFirmsStatus() {
+  return request<FIRMSSyncStatus>('/api/firms/status');
+}
+
+export function fetchEvents() {
+  return request<any[]>('/api/events');
+}
+
+export function syncFirmsData(options?: FIRMSSyncOptions) {
+  return request<any>('/api/firms/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(
+      options || {
+        sources: ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'],
+        area: 'IND',
+        days: 1,
+        clear_existing: true,
+      },
+    ),
+  });
+}
+
