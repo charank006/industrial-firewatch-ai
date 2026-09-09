@@ -80,7 +80,7 @@ const initialLayers: GISLayerVisibility = {
 };
 
 const initialFilters: FilterState = {
-  region: 'Telangana Bounding Box',
+  region: 'India',
   eventType: 'ALL',
   severity: 'ALL',
   // 24h was hiding most of the pipeline's own data. Polar-orbiting satellites

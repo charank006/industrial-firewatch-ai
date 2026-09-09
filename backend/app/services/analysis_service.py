@@ -111,6 +111,7 @@ async def fetch_enrichment(
     cached_surroundings: Optional[Dict[str, Any]] = None,
     radius_m: Optional[int] = None,
     client: Optional[httpx.AsyncClient] = None,
+    allow_overpass: bool = True,
 ) -> Enrichment:
     """Every outbound HTTP call for one event, and nothing else.
 
@@ -123,6 +124,15 @@ async def fetch_enrichment(
     if cached_surroundings is not None:
         enrichment.surroundings = SurroundingsFeatures(**cached_surroundings)
         enrichment.from_cache = True
+    elif not allow_overpass:
+        # Over a country-sized AOI the backlog is hundreds of events a day and
+        # Overpass takes seconds to minutes each, so it is spent on the
+        # highest-FRP events first and the rest are classified on WorldCover
+        # alone. Land cover still resolves forest/agriculture/urban; only the
+        # industrial and gas evidence is missing, and saying so is better than
+        # letting one slow dependency stall the queue.
+        enrichment.surroundings_unavailable = True
+        enrichment.errors["surroundings"] = "overpass budget spent for this run"
     else:
         try:
             elements = await overpass.fetch_elements(
@@ -459,7 +469,9 @@ async def claim_pending(limit: int = 10) -> List[Dict[str, Any]]:
 
 
 async def analyse_claimed(
-    claim: Dict[str, Any], client: Optional[httpx.AsyncClient] = None
+    claim: Dict[str, Any],
+    client: Optional[httpx.AsyncClient] = None,
+    allow_overpass: bool = True,
 ) -> Dict[str, Any]:
     """Fetch and apply one already-claimed event, committing on its own.
 
@@ -480,6 +492,7 @@ async def analyse_claimed(
         cached_surroundings=cached,
         radius_m=radius_m,
         client=client,
+        allow_overpass=allow_overpass,
     )
 
     async with get_sessionmaker()() as db:
@@ -516,9 +529,16 @@ async def drain_pending(limit: int = 10) -> List[Dict[str, Any]]:
         timeout=settings.OVERPASS_TIMEOUT_S + 10,
         headers={"User-Agent": settings.HTTP_USER_AGENT},
     ) as client:
-        for claim in claims:
+        # Claims arrive highest-FRP first, so the budget is spent where the
+        # industrial detail matters most.
+        budget = settings.OSM_MAX_LOOKUPS_PER_RUN
+        for index, claim in enumerate(claims):
             try:
-                results.append(await analyse_claimed(claim, client=client))
+                results.append(
+                    await analyse_claimed(
+                        claim, client=client, allow_overpass=index < budget
+                    )
+                )
             except Exception:  # noqa: BLE001 - one bad event must not end the batch
                 continue
     return results

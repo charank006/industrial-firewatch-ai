@@ -94,6 +94,10 @@ export const Header: React.FC = () => {
             }
             className="pl-8 pr-3 py-1 bg-[#0A121E] border border-[#1E2C3B] text-slate-200 text-xs rounded-md focus:outline-none focus:border-[#3DB7D9] transition"
           >
+            <option value="India">
+              India (all states)
+            </option>
+
             <option value="Telangana Bounding Box">
               Telangana Bounding Box (IN)
             </option>

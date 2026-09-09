@@ -142,7 +142,7 @@ export function fetchFires(query: FiresQuery = {}) {
   if (query.since) params.set('since', query.since);
   if (query.status) params.set('status', query.status);
   if (query.minFrp) params.set('min_frp', String(query.minFrp));
-  params.set('limit', String(query.limit ?? 500));
+  params.set('limit', String(query.limit ?? 3000));
 
   return request<{ total: number; history_days: number; fires: ApiFireEvent[] }>(
     `/api/fires?${params.toString()}`,

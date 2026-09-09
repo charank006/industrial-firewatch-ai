@@ -290,7 +290,9 @@ async def list_fires(
     since: Optional[str] = Query(None, description="ISO-8601 lower bound on last_detected"),
     status: str = Query("all", pattern="^(active|contained|all)$"),
     min_frp: float = Query(0.0, ge=0),
-    limit: int = Query(200, ge=1, le=1000),
+    # Raised for the country-scale AOI: India produces roughly 500 detections
+    # a day, so a 7-day window is thousands of events, not hundreds.
+    limit: int = Query(200, ge=1, le=5000),
     offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
     query = select(FireEvent)

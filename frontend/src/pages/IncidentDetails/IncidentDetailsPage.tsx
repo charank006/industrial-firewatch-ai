@@ -30,9 +30,10 @@ export const IncidentDetailsPage: React.FC = () => {
    * are the event's own satellite passes, and the baseline is its own mean
    * FRP rather than a round number chosen to make the spike look dramatic.
    */
-  const [series, setSeries] = useState<
-    Array<{ time: string; frp: number; baseline: number }> | null
+  const [rows, setRows] = useState<
+    Array<{ time: string; frp: number; at: string }> | null
   >(null);
+  const [window, setWindow] = useState<'24h' | '7d' | 'all'>('7d');
 
   useEffect(() => {
     if (!incident?.id) return;
@@ -41,26 +42,40 @@ export const IncidentDetailsPage: React.FC = () => {
     fetchFireDetections(incident.id)
       .then((data) => {
         if (cancelled || !data?.detections?.length) return;
-        const mean =
-          data.detections.reduce((total, d) => total + d.frp_mw, 0) / data.detections.length;
-        setSeries(
+        setRows(
           data.detections.map((d) => ({
             time: d.time_formatted || d.acquisition_time.slice(11, 16),
             frp: Number(d.frp_mw.toFixed(1)),
-            baseline: Number(mean.toFixed(1)),
+            at: d.acquisition_time,
           })),
         );
       })
       .catch(() => {
         // A missing series is an expected state; the panel says so rather
         // than falling back to invented numbers.
-        if (!cancelled) setSeries(null);
+        if (!cancelled) setRows(null);
       });
 
     return () => {
       cancelled = true;
     };
   }, [incident?.id]);
+
+  /**
+   * The plotted window. The baseline is the mean of whatever is in view, not
+   * of the whole history: comparing a 24-hour spike against a seven-day mean
+   * would flatter every spike.
+   */
+  const series = React.useMemo(() => {
+    if (!rows?.length) return null;
+    const spans: Record<string, number> = { '24h': 24, '7d': 24 * 7, all: Infinity };
+    const cutoff = Date.now() - spans[window] * 3_600_000;
+    const inWindow =
+      window === 'all' ? rows : rows.filter((r) => new Date(r.at).getTime() >= cutoff);
+    if (!inWindow.length) return [];
+    const mean = inWindow.reduce((t, r) => t + r.frp, 0) / inWindow.length;
+    return inWindow.map((r) => ({ ...r, baseline: Number(mean.toFixed(1)) }));
+  }, [rows, window]);
 
   if (!incident) {
     return (
@@ -117,16 +132,36 @@ export const IncidentDetailsPage: React.FC = () => {
           <div className="bg-[#07101B] border border-[#203246] rounded-xl p-4 space-y-3 font-mono">
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold text-[#16A9D9] uppercase tracking-wider">
-                HISTORICAL FRP VS BASELINE SPIKE
+                FRP VS BASELINE
               </span>
-              <span className="text-[#FFB020] font-bold">PEAK: {incident.frpMw} MW</span>
+              <div className="flex items-center gap-2">
+                {/* The baseline is recomputed over whichever window is shown,
+                    so a 24h spike is not measured against a 7-day mean. */}
+                <div className="flex rounded border border-[#203246] overflow-hidden">
+                  {(['24h', '7d', 'all'] as const).map((w) => (
+                    <button
+                      key={w}
+                      onClick={() => setWindow(w)}
+                      className={`px-2 py-0.5 text-[10px] font-mono transition ${
+                        window === w
+                          ? 'bg-[#16A9D9]/20 text-[#16A9D9] font-bold'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {w === 'all' ? 'All' : w}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[#FFB020] font-bold">PEAK: {incident.frpMw} MW</span>
+              </div>
             </div>
 
             <div className="h-48 w-full pt-2">
-              {series === null ? (
+              {series === null || series.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-[11px] font-mono text-[#66768A] text-center px-6">
-                  No detection series for this event yet. It is plotted from the event's own
-                  satellite passes, so a single-pass detection has nothing to chart.
+                  {series === null
+                    ? "No detection series for this event yet. It is plotted from the event's own satellite passes, so a single-pass detection has nothing to chart."
+                    : `No satellite pass for this event in the last ${window === '24h' ? '24 hours' : '7 days'}.`}
                 </div>
               ) : (
               <ResponsiveContainer width="100%" height="100%">

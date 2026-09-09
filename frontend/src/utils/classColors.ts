@@ -9,13 +9,15 @@
 import type { EventClassification } from '../types';
 
 export const CLASS_COLOR: Record<EventClassification, string> = {
-  'Industrial Fire': '#FF3B30',
-  'Routine Flare': '#FF6B22',
-  'Forest Fire': '#FF6B22',
-  'Agricultural Burning': '#FFB020',
-  'Gas/Oil': '#A855F7',
-  'Urban': '#EC4899',
-  'Unknown Anomaly': '#66768A',
+  // Every class needs its own hue: Routine Flare and Forest Fire were both
+  // #FF6B22, so two very different findings drew the same dot on the map.
+  'Industrial Fire': '#FF3B30',      // red
+  'Routine Flare': '#FF6B22',        // orange-red
+  'Forest Fire': '#2FBF71',          // green
+  'Agricultural Burning': '#FFB020', // amber
+  'Gas/Oil': '#A855F7',              // purple
+  'Urban': '#EC4899',                // pink
+  'Unknown Anomaly': '#66768A',      // grey
 };
 
 export const UNCLASSIFIED_COLOR = CLASS_COLOR['Unknown Anomaly'];

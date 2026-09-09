@@ -60,3 +60,47 @@ class TestFailSafe:
         load - that would silently empty the pipeline."""
         monkeypatch.setattr(settings, "AOI_BOUNDARY", "atlantis")
         assert is_inside_aoi(*GHUGUS)
+
+
+class TestIndiaBoundary:
+    """The AOI is a country now. The FIRMS rectangle for India also covers
+    parts of Pakistan, Nepal, Bangladesh, Sri Lanka and Myanmar."""
+
+    @pytest.fixture
+    def india(self, monkeypatch):
+        monkeypatch.setattr(settings, "AOI_BOUNDARY", "india")
+        return load_boundary("india")
+
+    def test_the_boundary_ships_with_the_app(self, india):
+        assert india is not None
+
+    @pytest.mark.parametrize("name,lat,lon", [
+        ("Hyderabad", 17.385, 78.486),
+        ("Delhi", 28.61, 77.21),
+        ("Chennai", 13.08, 80.27),
+        ("Guwahati", 26.14, 91.74),
+        ("Port Blair", 11.62, 92.73),   # Andamans, far from the mainland
+    ])
+    def test_indian_cities_are_inside(self, india, name, lat, lon):
+        assert is_inside_aoi(lat, lon), name
+
+    @pytest.mark.parametrize("name,lat,lon", [
+        ("Colombo, Sri Lanka", 6.93, 79.86),
+        ("Kathmandu, Nepal", 27.71, 85.32),
+        ("Dhaka, Bangladesh", 23.81, 90.41),
+        ("Lahore, Pakistan", 31.55, 74.34),
+    ])
+    def test_neighbouring_countries_inside_the_rectangle_are_excluded(
+        self, india, name, lat, lon
+    ):
+        assert not is_inside_aoi(lat, lon), name
+
+    def test_simplification_stays_inside_a_viirs_pixel(self):
+        """0.002 degrees is about 220 m, inside a 375 m VIIRS pixel, so it
+        cannot move a detection across the border it is being tested against."""
+        import json
+        from pathlib import Path
+        from app.services.aoi_service import AOI_DIR
+
+        payload = json.loads((AOI_DIR / "india.geojson").read_text())
+        assert payload["features"][0]["properties"]["simplified_deg"] <= 0.003

@@ -66,6 +66,7 @@ class Settings(BaseSettings):
         "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map"
     )
     WORLDCOVER_TIMEOUT_S: int = 25
+    WORLDCOVER_MAX_ATTEMPTS: int = 3
 
     # --- Weather (Open-Meteo) --------------------------------------------
     # Forecast endpoint with past_days, NOT archive-api: the archive is
@@ -115,6 +116,11 @@ class Settings(BaseSettings):
     # (Overpass retries across mirrors can run several minutes) so a slow run
     # is never mistaken for a dead one.
     ANALYSIS_STALL_MINUTES: int = 20
+    # Overpass lookups allowed per analysis run. Beyond this, events are
+    # classified on WorldCover alone rather than queueing behind a dependency
+    # that takes seconds to minutes per call. Claims are ordered by FRP, so
+    # the budget goes to the strongest signals.
+    OSM_MAX_LOOKUPS_PER_RUN: int = 3
     CONTAINMENT_SWEEP_HOURS: int = 6
     # Skip the first ingest at boot; useful in development so a restart does
     # not immediately spend FIRMS quota.

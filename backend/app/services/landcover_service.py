@@ -193,14 +193,27 @@ async def fetch_land_cover(
     if key in _MEMO:
         return _MEMO[key]
 
-    try:
-        result = await asyncio.wait_for(
-            asyncio.to_thread(_read_disc, latitude, longitude, radius_m),
-            timeout=settings.WORLDCOVER_TIMEOUT_S,
-        )
-    except Exception as exc:  # noqa: BLE001 - a raster read must never end an analysis
-        logger.warning("WorldCover read failed at %.4f,%.4f: %s", latitude, longitude, exc)
-        result = None
+    # Transient DNS and connection resets show up under load - a run over the
+    # whole of India lost 45 of 47 lookups to "could not resolve host" while
+    # the same URL answered fine seconds later. One retry with a short backoff
+    # recovers those without turning a genuine outage into a long stall.
+    result = None
+    for attempt in range(1, settings.WORLDCOVER_MAX_ATTEMPTS + 1):
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(_read_disc, latitude, longitude, radius_m),
+                timeout=settings.WORLDCOVER_TIMEOUT_S,
+            )
+            break
+        except Exception as exc:  # noqa: BLE001 - never end an analysis on a raster read
+            if attempt >= settings.WORLDCOVER_MAX_ATTEMPTS:
+                logger.warning(
+                    "WorldCover read failed at %.4f,%.4f after %d attempt(s): %s",
+                    latitude, longitude, attempt, exc,
+                )
+                result = None
+            else:
+                await asyncio.sleep(0.6 * attempt)
 
     _MEMO[key] = result
     return result

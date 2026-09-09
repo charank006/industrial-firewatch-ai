@@ -141,3 +141,35 @@ class TestCaching:
         await lc.fetch_land_cover(17.38500, 78.48600)
         await lc.fetch_land_cover(17.38504, 78.48598)
         assert calls["n"] == 1
+
+
+class TestTransientFailureRecovery:
+    """A run over the whole of India lost 45 of 47 lookups to "could not
+    resolve host" while the same URL answered seconds later."""
+
+    async def test_a_transient_failure_is_retried(self, monkeypatch):
+        import numpy as np
+        calls = {"n": 0}
+
+        def flaky(la, lo, r):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OSError("could not resolve host")
+            return _build(np.full((21, 21), 40, dtype=np.uint8), r)
+
+        monkeypatch.setattr(lc, "_read_disc", flaky)
+        result = await lc.fetch_land_cover(17.0, 78.0)
+        assert calls["n"] == 2
+        assert result.label == "Cropland"
+
+    async def test_a_persistent_failure_still_gives_up(self, monkeypatch):
+        calls = {"n": 0}
+
+        def always(la, lo, r):
+            calls["n"] += 1
+            raise OSError("down")
+
+        monkeypatch.setattr(lc, "_read_disc", always)
+        monkeypatch.setattr(settings, "WORLDCOVER_MAX_ATTEMPTS", 2)
+        assert await lc.fetch_land_cover(17.0, 78.0) is None
+        assert calls["n"] == 2

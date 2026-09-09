@@ -167,6 +167,9 @@ export const REGION_BBOX: Record<string, string> = {
   // Roughly a fifth of ingested events (Ghugus, Ballarpur, Sakhari) are
   // across that border, and calling the region "Telangana" reported them as
   // Telangana fires.
+  // The AOI the ingest worker polls. Detections are clipped to the real
+  // country border before storage, so this box is only a fetch envelope.
+  'India': '68.0,6.0,98.0,36.0',
   'Telangana Bounding Box': '77.2,15.8,81.4,19.95',
   'Gujarat Industrial Corridor': '68.0,20.0,75.0,25.0',
   'Permian Petrochemical Zone': '-104.5,29.5,-100.5,33.5',
