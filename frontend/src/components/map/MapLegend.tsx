@@ -26,6 +26,14 @@ export const MapLegend: React.FC = () => {
           <span>Ag Burning</span>
         </div>
         <div className="flex items-center space-x-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#A855F7]" />
+          <span>Gas/Oil</span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#EC4899]" />
+          <span>Urban</span>
+        </div>
+        <div className="flex items-center space-x-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-[#6F7E8D]" />
           <span>Unknown</span>
         </div>

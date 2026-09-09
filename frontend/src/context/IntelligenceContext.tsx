@@ -34,6 +34,15 @@ interface IntelligenceContextType {
   // Calculated Metrics
   metrics: SituationMetrics;
 
+  // Data source & API state
+  dataSource?: 'mock' | 'api';
+  isLoading?: boolean;
+  error?: string | null;
+  historyDays?: number | null;
+  analysis?: any;
+  isAnalysisLoading?: boolean;
+  refresh?: () => void;
+
   // Actions
   setSelectedIncident: (incident: ThermalHotspot | null) => void;
   setSelectedFacility: (facility: IndustrialFacility | null) => void;
@@ -117,6 +126,8 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
       'Routine Flare': 0,
       'Forest Fire': 0,
       'Agricultural Burning': 0,
+      'Gas/Oil': 0,
+      'Urban': 0,
       'Unknown Anomaly': 0,
     };
 

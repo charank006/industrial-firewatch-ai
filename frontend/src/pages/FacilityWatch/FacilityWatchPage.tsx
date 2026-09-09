@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Factory, ShieldAlert, Activity, ArrowRight } from 'lucide-react';
+import { Factory } from 'lucide-react';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
 

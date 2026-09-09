@@ -7,7 +7,6 @@ import {
   Filter,
   Flame,
   Globe2,
-  Layers,
   MapPin,
   Radio,
   RotateCcw,

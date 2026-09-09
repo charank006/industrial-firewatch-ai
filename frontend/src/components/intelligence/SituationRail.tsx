@@ -1,5 +1,4 @@
-import React from 'react';
-import { Activity, Flame, ShieldAlert } from 'lucide-react';
+import { Activity } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 import type { EventClassification } from '../../types';
 

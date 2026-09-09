@@ -1,0 +1,156 @@
+{
+  "_comment": [
+    "Hand-tuned weights for the transparent fire-source scorer.",
+    "score_c = bias_c + sum_i(weight[i][c] * evidence_i), then softmax(score / temperature).",
+    "Every evidence term is bounded to [0,1] so weights stay directly comparable.",
+    "This file is the model. Changing it changes model_version (a hash of the",
+    "file), so a tuning change is as traceable as a code change and needs no",
+    "redeploy. Phase 8 swaps the whole thing for a trained model behind the",
+    "identical output contract.",
+    "",
+    "Spec Rule 8: probabilities, never certainty. Spec Rule 3: nearby industry",
+    "does not prove industrial origin, which is why no single term can win",
+    "alone.",
+    "Spec Rule 2: weather describes conditions, not source - so weather terms",
+    "carry deliberately small class weights and are routed into severity",
+    "instead. Giving temperature anomaly a large industrial weight would",
+    "produce confidently wrong answers."
+  ],
+  "model_name": "rules-v1",
+  "temperature": 1.3,
+  "probability_floor": 0.02,
+  "classes": [
+    "industrial",
+    "flare",
+    "forest",
+    "agriculture",
+    "gas_oil",
+    "urban",
+    "unknown"
+  ],
+  "bias": {
+    "industrial": 0.0,
+    "flare": -0.4,
+    "forest": 0.0,
+    "agriculture": 0.0,
+    "gas_oil": -0.6,
+    "urban": -1.4,
+    "unknown": 1.0
+  },
+  "weights": {
+    "inside_industrial": {
+      "industrial": 2.2,
+      "flare": 2.0,
+      "gas_oil": 0.8,
+      "urban": 0.0,
+      "forest": -1.8,
+      "agriculture": -1.8
+    },
+    "industrial_area": {
+      "industrial": 1.5,
+      "flare": 1.2,
+      "gas_oil": 0.5,
+      "urban": -0.5,
+      "forest": -1.2,
+      "agriculture": -1.0
+    },
+    "factory_near": {
+      "industrial": 1.2,
+      "flare": 0.6,
+      "gas_oil": 0.4
+    },
+    "gas_tags": {
+      "gas_oil": 4.5,
+      "flare": 0.8,
+      "industrial": -1.0,
+      "forest": -1.5,
+      "agriculture": -1.5
+    },
+    "forest_area": {
+      "forest": 2.6,
+      "industrial": -1.5,
+      "flare": -1.5,
+      "gas_oil": -1.5,
+      "urban": -1.5,
+      "agriculture": -0.5
+    },
+    "farmland_area": {
+      "agriculture": 2.6,
+      "industrial": -1.5,
+      "flare": -1.5,
+      "gas_oil": -1.5,
+      "urban": -1.5,
+      "forest": -0.5
+    },
+    "residential_area": {
+      "urban": 2.4,
+      "forest": -0.8,
+      "agriculture": -0.4
+    },
+    "building_density": {
+      "urban": 1.2,
+      "industrial": 0.2
+    },
+    "low_vegetation": {
+      "urban": 1.0,
+      "industrial": 0.3
+    },
+    "recurrence": {
+      "flare": 2.4,
+      "gas_oil": 0.4,
+      "industrial": -0.8,
+      "forest": -0.3
+    },
+    "frp_stable": {
+      "flare": 1.8,
+      "gas_oil": 0.6,
+      "industrial": -0.6
+    },
+    "frp_high": {
+      "industrial": 0.9,
+      "forest": 0.3,
+      "agriculture": -0.8,
+      "flare": -0.2
+    },
+    "long_duration": {
+      "flare": 0.8,
+      "forest": 0.4,
+      "agriculture": -0.6
+    },
+    "night": {
+      "flare": 0.3,
+      "gas_oil": 0.2,
+      "agriculture": -0.8
+    },
+    "neighbours": {
+      "agriculture": 1.2,
+      "forest": 0.2,
+      "industrial": -0.4,
+      "flare": -0.4
+    },
+    "dryness": {
+      "forest": 0.6,
+      "agriculture": 0.2
+    }
+  },
+  "confidence": {
+    "weight_p_top": 0.6,
+    "weight_margin": 0.25,
+    "weight_entropy": 0.15,
+    "min": 40,
+    "max": 96,
+    "penalty_sparse_osm": 0.15,
+    "penalty_partial_weather": 0.15,
+    "penalty_single_detection": 0.1
+  },
+  "severity": {
+    "frp_critical": 150.0,
+    "frp_high": 60.0,
+    "frp_medium": 15.0,
+    "benign_classes": [
+      "flare",
+      "agriculture"
+    ],
+    "exposure_escalation_threshold": 3
+  }
+}

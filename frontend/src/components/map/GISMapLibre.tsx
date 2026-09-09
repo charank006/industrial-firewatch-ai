@@ -311,7 +311,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     }
     if (map.getLayer('risk-zones-fill')) {
       map.setLayoutProperty('risk-zones-fill', 'visibility', layers.riskZones ? 'visible' : 'none');
-      map.setLayoutProperty('risk-zones-line', 'visibility', layers.riskZones ? 'visibility' : 'none');
+      map.setLayoutProperty('risk-zones-line', 'visibility', layers.riskZones ? 'visible' : 'none');
     }
   }, [layers]);
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Radio, Flame, ShieldAlert, Cpu, Layers, ExternalLink, X, Activity, Globe, Zap } from 'lucide-react';
+import { Radio, Flame, ShieldAlert, Cpu, ExternalLink, X, Activity, Globe } from 'lucide-react';
 
 export interface SatelliteDossier {
   id: 'SUOMI_NPP' | 'NOAA_20';

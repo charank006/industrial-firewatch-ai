@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Globe from 'globe.gl';
 import * as THREE from 'three';
@@ -146,14 +146,6 @@ export default function GeoFlareLanding() {
   const globeElRef = useRef<HTMLDivElement | null>(null);
   const globeInstanceRef = useRef<any>(null);
 
-  // Toggle Context Layer Helper
-  const toggleLayer = (layer: ContextLayer) => {
-    if (layer === 'thermal') return; // Thermal is the base layer
-    setActiveLayers((prev) =>
-      prev.includes(layer) ? prev.filter((l) => l !== layer) : [...prev, layer]
-    );
-  };
-
   // 3D WebGL Three.js Globe Initialization + Minimal Thermal Heatmap + Infrared Scan Beam
   useEffect(() => {
     if (!globeElRef.current) return;
@@ -164,11 +156,11 @@ export default function GeoFlareLanding() {
 
     const globePoints = [
       ...HISTORICAL_EVENTS.slice(0, 15).map((ev) => ({
-        lat: ev.latitude,
-        lng: ev.longitude,
-        name: ev.title,
-        color: ev.severity === 'CRITICAL' ? '#EF4444' : '#F97316',
-        frp: `${ev.frpMw} MW`,
+        lat: ev.lat,
+        lng: ev.lng,
+        name: ev.name,
+        color: ev.markerType === 'confirmed_critical' ? '#EF4444' : '#F97316',
+        frp: ev.shortSummary,
       })),
       ...LANDING_SIGNALS.map((sig) => ({
         lat: sig.lat,
