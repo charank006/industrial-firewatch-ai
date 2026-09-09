@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # which is what makes Routine Flare separable from Industrial Fire.
     FIRMS_SOURCES: str = "VIIRS_SNPP_NRT,VIIRS_NOAA20_NRT,VIIRS_NOAA21_NRT,MODIS_NRT"
     FIRMS_DAY_RANGE: int = 1  # 1-10; Phase 2 cold-start seeds with 10
+    # Name of a boundary asset in app/data/aoi/ to clip detections to. FIRMS
+    # only accepts a rectangle, and no rectangle matches a state border - the
+    # Telangana box overlaps Maharashtra. Empty keeps the whole rectangle.
+    AOI_BOUNDARY: str = ""
 
     # --- Weather (Open-Meteo) --------------------------------------------
     # Forecast endpoint with past_days, NOT archive-api: the archive is

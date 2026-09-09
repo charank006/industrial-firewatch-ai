@@ -21,6 +21,7 @@ from app.config import settings
 from app.database.connection import get_sessionmaker
 from app.models.models import SeedRun
 from app.services import firms_service
+from app.services.aoi_service import active_boundary_name, is_inside_aoi
 from app.services.analysis_service import drain_pending
 from app.services.fire_event_service import mark_stale_events_contained, process_detections
 
@@ -43,6 +44,19 @@ async def ingest_job(day_range: Optional[int] = None) -> Dict[str, Any]:
         await session.flush()
         try:
             detections = await firms_service.fetch_detections(day_range=effective_range)
+
+            # FIRMS can only be queried by rectangle. Clip to the real border
+            # before anything is stored, so a Maharashtra fire is never
+            # recorded, classified and reported as a Telangana one.
+            fetched = len(detections)
+            detections = [d for d in detections if is_inside_aoi(d.latitude, d.longitude)]
+            clipped = fetched - len(detections)
+            if clipped:
+                logger.info(
+                    "clipped %d of %d detection(s) falling outside the %s boundary",
+                    clipped, fetched, active_boundary_name(),
+                )
+
             result = await process_detections(session, detections)
             contained = await mark_stale_events_contained(session)
 
