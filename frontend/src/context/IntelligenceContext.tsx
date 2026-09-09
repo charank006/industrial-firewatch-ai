@@ -122,7 +122,11 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [layers, setLayers] = useState<GISLayerVisibility>(initialLayers);
-  const [mapMode, setMapMode] = useState<MapMode>('dark');
+  // Satellite imagery by default: on a dark canvas a fire marker sits on
+  // empty grey, and the whole question an operator is asking - what is
+  // actually on the ground here - is answered by the imagery. The Dark
+  // Canvas toggle remains for reading labels and risk-zone geometry.
+  const [mapMode, setMapMode] = useState<MapMode>('satellite');
   // Math.max guards the empty first render in api mode, where
   // `hotspots.length - 1` would otherwise be -1.
   const [timelineIndex, setTimelineIndex] = useState<number>(Math.max(0, hotspots.length - 1));

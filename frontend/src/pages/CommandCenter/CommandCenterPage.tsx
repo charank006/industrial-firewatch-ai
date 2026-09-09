@@ -16,11 +16,11 @@ export const CommandCenterPage: React.FC = () => {
       </div>
 
       {/* 2. FLOATING MAP CONTROLS & LEGEND OVERLAYS */}
-      <div className="absolute top-4 left-90 z-20 flex items-center gap-3">
+      <div className="absolute top-4 left-[22rem] z-20 flex items-center gap-3">
         <MapControls />
       </div>
 
-      <div className="absolute top-4 right-104 z-20 hidden xl:block">
+      <div className="absolute top-4 right-[26rem] z-20 hidden xl:block">
         <MapLegend />
       </div>
 

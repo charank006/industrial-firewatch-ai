@@ -159,7 +159,9 @@ export const SituationRail: React.FC = () => {
 
       {/* Summary Footer */}
       <div className="p-3 bg-black/50 border-t border-white/10 font-mono text-[10px] text-slate-400 flex justify-between items-center shrink-0">
-        <span>SECTOR: <strong className="text-white">GUJARAT 01</strong></span>
+        {/* The fourth hardcoded Gujarat label found in this UI while the
+            pipeline was polling Telangana. */}
+        <span>SECTOR: <strong className="text-white">{filters.region.toUpperCase()}</strong></span>
         <span>SENSOR: <strong className="text-cyan-400">NOAA-20 VIIRS</strong></span>
       </div>
 
