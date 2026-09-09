@@ -357,3 +357,45 @@ class GroundTruth(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
+
+class AlertRecord(Base):
+    """Dedicated Alert Engine records for dispatched notifications and audits."""
+
+    __tablename__ = "alert_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String, ForeignKey("fire_events.id"), nullable=False, index=True)
+    alert_type = Column(String, nullable=False, default="industrial_fire")
+    severity = Column(String, nullable=False, default="HIGH")
+    reason = Column(Text, nullable=False)
+    facility_id = Column(String, nullable=True)
+    facility_name = Column(String, nullable=True)
+    distance_meters = Column(Float, nullable=True)
+    confidence = Column(Float, nullable=True)
+    status = Column(String, nullable=False, default="pending")  # pending | sent | failed | acknowledged | resolved
+    channels_sent = Column(JSONB, nullable=True)
+    channel_statuses = Column(JSONB, nullable=True)
+    error_message = Column(Text, nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("ix_alerts_event_created", "event_id", "created_at"),
+        Index("ix_alerts_status", "status"),
+        Index("ix_alerts_created_at", "created_at"),
+    )
+
+
+class IngestionCheckpoint(Base):
+    """Tracks incremental FIRMS observation timestamps for reliable idempotent scheduling."""
+
+    __tablename__ = "ingestion_checkpoints"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String, nullable=False, unique=True)
+    last_acquired_at = Column(DateTime(timezone=True), nullable=False)
+    records_processed = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+

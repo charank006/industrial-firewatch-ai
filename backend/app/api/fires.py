@@ -59,7 +59,7 @@ MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 
 
 class PredictRequest(BaseModel):
-    event_id: Optional[str] = None
+    event_id: Optional[Any] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     frp_mw: Optional[float] = None
@@ -841,16 +841,29 @@ async def predict_thermal_anomaly(
     """Classify a thermal anomaly event using the 2-stage GeoFlare pipeline:
     Stage 1: 7-Day Persistence Pre-Filter (5-7 active days -> Persistent Thermal Source, LightGBM bypassed).
     Stage 2: LightGBM Multiclass ML Classifier (only for non-persistent sources).
+    Stage 3: Severity Engine & Alert Engine dispatch.
     """
+    from app.services.notifications.alert_engine import process_event_alerts
+
     event_id = req.event_id
 
     # Path 1: Existing FireEvent in database
-    if event_id:
+    if event_id is not None:
+        event_str = str(event_id).strip()
         event = (
-            await db.execute(
-                select(FireEvent).where(FireEvent.id == event_id)
-            )
+            await db.execute(select(FireEvent).where(FireEvent.id == event_str))
         ).scalar_one_or_none()
+        if event is None and event_str.isdigit():
+            padded_id = f"FE-{int(event_str):06d}"
+            event = (
+                await db.execute(select(FireEvent).where(FireEvent.id == padded_id))
+            ).scalar_one_or_none()
+        if event is None and not event_str.startswith("FE-"):
+            alt_id = f"FE-{event_str}"
+            event = (
+                await db.execute(select(FireEvent).where(FireEvent.id == alt_id))
+            ).scalar_one_or_none()
+
         if event is None:
             raise HTTPException(status_code=404, detail=f"Fire event '{event_id}' not found")
 
@@ -858,16 +871,22 @@ async def predict_thermal_anomaly(
         persistence_eval = await evaluate_persistence(db, event)
         if persistence_eval.is_persistent:
             return {
+                "event_id": event_id,
                 "fire_event_id": event.id,
+                "persistent": True,
                 "is_persistent": True,
                 "active_days_7d": persistence_eval.active_days,
                 "persistence_status": "Persistent Thermal Source",
                 "lightgbm_executed": False,
+                "predicted_class": "persistent_thermal_source",
                 "prediction": "persistent_thermal_source",
                 "prediction_label": "Persistent Thermal Source",
+                "predicted_probability": 1.0,
+                "confidence": 1.0,
                 "classification_confidence_pct": 100,
                 "probabilities": None,
                 "severity": "LOW",
+                "model_version": "persistence_engine_v1",
                 "suggested_action": "PERSISTENT SOURCE: Continuous thermal signature detected across 5+ days. Routine industrial/flare installation.",
                 "reasoning_steps": [
                     {
@@ -901,14 +920,22 @@ async def predict_thermal_anomaly(
             confidence_threshold=req.confidence_threshold,
         )
 
+        # Stage 3: Evaluate Alert Engine & record alerts
+        alert_eval = await process_event_alerts(db, event, pred_record, raw_features)
+
         return {
+            "event_id": event_id,
             "fire_event_id": event.id,
+            "persistent": False,
             "is_persistent": False,
             "active_days_7d": persistence_eval.active_days,
             "persistence_status": "Non-Persistent Event",
             "lightgbm_executed": True,
+            "predicted_class": ml_pred.predicted_class,
             "prediction": ml_pred.predicted_class,
             "prediction_label": ml_pred.predicted_label,
+            "predicted_probability": round(ml_pred.predicted_probability, 4),
+            "confidence": round(ml_pred.predicted_probability, 4),
             "classification_confidence_pct": ml_pred.confidence_pct,
             "probabilities": ml_pred.probabilities,
             "severity": ml_pred.severity,
@@ -917,6 +944,7 @@ async def predict_thermal_anomaly(
             "suggested_action": ml_pred.suggested_action,
             "reasoning_steps": ml_pred.reasoning_steps,
             "feature_vector": ml_pred.feature_vector,
+            "alert": alert_eval.to_dict(),
             "explanation": "Event classified via LightGBM multiclass GBDT model across 6 canonical source classes.",
         }
 
@@ -936,16 +964,22 @@ async def predict_thermal_anomaly(
 
     if is_persistent:
         return {
+            "event_id": None,
             "fire_event_id": None,
+            "persistent": True,
             "is_persistent": True,
             "active_days_7d": active_days_7d,
             "persistence_status": "Persistent Thermal Source",
             "lightgbm_executed": False,
+            "predicted_class": "persistent_thermal_source",
             "prediction": "persistent_thermal_source",
             "prediction_label": "Persistent Thermal Source",
+            "predicted_probability": 1.0,
+            "confidence": 1.0,
             "classification_confidence_pct": 100,
             "probabilities": None,
             "severity": "LOW",
+            "model_version": "persistence_engine_v1",
             "suggested_action": "PERSISTENT SOURCE: Continuous thermal signature detected across 5+ days. Routine industrial/flare installation.",
             "reasoning_steps": [
                 {
@@ -965,22 +999,26 @@ async def predict_thermal_anomaly(
     )
 
     return {
+        "event_id": None,
         "fire_event_id": None,
+        "persistent": False,
         "is_persistent": False,
         "active_days_7d": active_days_7d,
         "persistence_status": "Non-Persistent Event",
         "lightgbm_executed": True,
+        "predicted_class": ml_pred.predicted_class,
         "prediction": ml_pred.predicted_class,
         "prediction_label": ml_pred.predicted_label,
+        "predicted_probability": round(ml_pred.predicted_probability, 4),
+        "confidence": round(ml_pred.predicted_probability, 4),
         "classification_confidence_pct": ml_pred.confidence_pct,
         "probabilities": ml_pred.probabilities,
         "severity": ml_pred.severity,
         "model_version": ml_pred.model_version,
         "model_kind": ml_pred.model_kind,
         "suggested_action": ml_pred.suggested_action,
-        "reasoning_steps": ml_pred.reasoning_steps,
         "feature_vector": ml_pred.feature_vector,
-        "explanation": "Ad-hoc thermal anomaly classified via LightGBM multiclass GBDT model.",
+        "explanation": "Event classified via LightGBM multiclass GBDT model across 6 canonical source classes.",
     }
 
 
@@ -1060,5 +1098,60 @@ async def sync_live_firms(day_range: int = Query(3, ge=1, le=10)) -> Dict[str, A
     except Exception as e:
         logger.error("Error during live FIRMS sync: %s", e)
         raise HTTPException(status_code=500, detail=f"NASA FIRMS sync failed: {e}")
+
+
+@router.get("/api/alerts/recent")
+async def get_recent_alerts(
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Retrieve recent alerts for frontend situation awareness."""
+    from app.models.models import AlertRecord
+    from app.services.notifications.alert_engine import get_recent_broadcast_alerts
+
+    alerts = []
+    try:
+        stmt = select(AlertRecord).order_by(desc(AlertRecord.created_at)).limit(limit)
+        res = await db.execute(stmt)
+        for row in res.scalars():
+            alerts.append({
+                "id": row.id,
+                "event_id": row.event_id,
+                "alert_type": row.alert_type,
+                "severity": row.severity,
+                "reason": row.reason,
+                "facility_id": row.facility_id,
+                "facility_name": row.facility_name,
+                "distance_meters": row.distance_meters,
+                "confidence": row.confidence,
+                "status": row.status,
+                "channels_sent": row.channels_sent,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            })
+    except Exception as exc:
+        logger.debug("Database query for AlertRecord failed (%s); using in-memory broadcast", exc)
+        alerts = get_recent_broadcast_alerts()
+
+    return {
+        "count": len(alerts),
+        "alerts": alerts,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+
+
+@router.get("/api/events/stream")
+async def stream_live_events():
+    """Server-Sent Events (SSE) stream for real-time frontend dashboard and map updates."""
+    import asyncio
+    from fastapi.responses import StreamingResponse
+
+    async def event_generator():
+        yield f"event: connected\ndata: {json.dumps({'status': 'connected', 'timestamp': datetime.datetime.now(datetime.timezone.utc).isoformat()})}\n\n"
+        while True:
+            await asyncio.sleep(15)
+            yield f"event: ping\ndata: {json.dumps({'time': datetime.datetime.now(datetime.timezone.utc).isoformat()})}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 
 

@@ -9,8 +9,7 @@ surfaced through /api/system/status instead of vanishing into a log nobody
 reads.
 """
 
-from __future__ import annotations
-
+import asyncio
 import datetime
 import logging
 from typing import Any, Dict, Optional
@@ -19,12 +18,14 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.database.connection import get_sessionmaker
-from app.models.models import SeedRun
+from app.models.models import IngestionCheckpoint, SeedRun
 from app.services import firms_service
 from app.services.analysis_service import drain_pending
 from app.services.fire_event_service import mark_stale_events_contained, process_detections
 
 logger = logging.getLogger(__name__)
+
+_ingest_lock = asyncio.Lock()
 
 
 async def ingest_job(day_range: Optional[int] = None) -> Dict[str, Any]:
@@ -34,53 +35,95 @@ async def ingest_job(day_range: Optional[int] = None) -> Dict[str, Any]:
     what the worker probe reports, and what tells an operator the pipeline has
     silently stopped.
     """
-    started = datetime.datetime.now(datetime.timezone.utc)
-    effective_range = day_range or settings.FIRMS_DAY_RANGE
-    run = SeedRun(started_at=started, day_range=effective_range)
+    if _ingest_lock.locked():
+        logger.info("ingest_job already running; skipping overlapping execution")
+        return {"ok": True, "skipped": "already_running"}
 
-    async with get_sessionmaker()() as session:
-        session.add(run)
-        await session.flush()
-        try:
-            detections = await firms_service.fetch_detections(day_range=effective_range)
-            result = await process_detections(session, detections)
-            contained = await mark_stale_events_contained(session)
+    async with _ingest_lock:
+        started = datetime.datetime.now(datetime.timezone.utc)
+        effective_range = day_range or settings.FIRMS_DAY_RANGE
+        logger.info(
+            "Scheduler execution start: Fetching NASA FIRMS telemetry (interval=%d s, day_range=%d)",
+            settings.effective_firms_poll_interval_seconds,
+            effective_range,
+        )
+        run = SeedRun(started_at=started, day_range=effective_range)
 
-            run.detections_fetched = result.detections_fetched
-            run.detections_inserted = result.detections_inserted
-            run.events_created = result.events_created
-            run.events_updated = result.events_updated
-            run.ok = True
-            run.detail = f"{contained} event(s) marked contained"
-            run.finished_at = datetime.datetime.now(datetime.timezone.utc)
-            await session.commit()
-
-            logger.info(
-                "ingest ok: fetched=%d inserted=%d events_created=%d events_updated=%d contained=%d",
-                result.detections_fetched,
-                result.detections_inserted,
-                result.events_created,
-                result.events_updated,
-                contained,
-            )
-            return {**result.as_dict(), "ok": True, "events_marked_contained": contained}
-
-        except Exception as exc:  # noqa: BLE001 - a scheduled job must not die
-            await session.rollback()
-            logger.exception("ingest failed")
-            # Re-add on a clean session: the rollback detached the run row.
-            async with get_sessionmaker()() as recovery:
-                recovery.add(
-                    SeedRun(
-                        started_at=started,
-                        finished_at=datetime.datetime.now(datetime.timezone.utc),
-                        day_range=effective_range,
-                        ok=False,
-                        detail=f"{type(exc).__name__}: {str(exc)[:400]}",
-                    )
+        async with get_sessionmaker()() as session:
+            session.add(run)
+            await session.flush()
+            try:
+                # Checkpoint inspection
+                ckpt_stmt = (
+                    select(IngestionCheckpoint)
+                    .where(IngestionCheckpoint.source == "nasa_firms_viirs")
+                    .limit(1)
                 )
-                await recovery.commit()
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                ckpt = (await session.execute(ckpt_stmt)).scalar_one_or_none()
+                if ckpt:
+                    logger.info("Ingestion checkpoint found: last_acquired_at=%s", ckpt.last_acquired_at.isoformat())
+
+                detections = await firms_service.fetch_detections(day_range=effective_range)
+                result = await process_detections(session, detections)
+                contained = await mark_stale_events_contained(session)
+
+                duplicates_ignored = max(0, result.detections_fetched - result.detections_inserted)
+
+                # Update Checkpoint with latest observation timestamp
+                if detections:
+                    latest_acq = max(d.acquisition_time for d in detections)
+                    if ckpt is None:
+                        ckpt = IngestionCheckpoint(
+                            source="nasa_firms_viirs",
+                            last_acquired_at=latest_acq,
+                            records_processed=len(detections),
+                        )
+                        session.add(ckpt)
+                    else:
+                        ckpt.last_acquired_at = max(ckpt.last_acquired_at, latest_acq)
+                        ckpt.records_processed += len(detections)
+
+                run.detections_fetched = result.detections_fetched
+                run.detections_inserted = result.detections_inserted
+                run.events_created = result.events_created
+                run.events_updated = result.events_updated
+                run.ok = True
+                run.detail = f"{contained} event(s) marked contained, {duplicates_ignored} duplicate(s) ignored"
+                run.finished_at = datetime.datetime.now(datetime.timezone.utc)
+                await session.commit()
+
+                logger.info(
+                    "Scheduler execution completion: fetched=%d inserted=%d duplicates_ignored=%d events_created=%d events_updated=%d contained=%d",
+                    result.detections_fetched,
+                    result.detections_inserted,
+                    duplicates_ignored,
+                    result.events_created,
+                    result.events_updated,
+                    contained,
+                )
+                return {
+                    **result.as_dict(),
+                    "ok": True,
+                    "duplicates_ignored": duplicates_ignored,
+                    "events_marked_contained": contained,
+                }
+
+            except Exception as exc:  # noqa: BLE001 - a scheduled job must not die
+                await session.rollback()
+                logger.exception("Scheduler execution error: ingest failed")
+                # Re-add on a clean session: the rollback detached the run row.
+                async with get_sessionmaker()() as recovery:
+                    recovery.add(
+                        SeedRun(
+                            started_at=started,
+                            finished_at=datetime.datetime.now(datetime.timezone.utc),
+                            day_range=effective_range,
+                            ok=False,
+                            detail=f"{type(exc).__name__}: {str(exc)[:400]}",
+                        )
+                    )
+                    await recovery.commit()
+                return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
 async def analysis_job(limit: Optional[int] = None) -> Dict[str, Any]:
@@ -95,10 +138,25 @@ async def analysis_job(limit: Optional[int] = None) -> Dict[str, Any]:
         # HTTP calls, so there is deliberately no session to wrap it in.
         results = await drain_pending(limit=batch)
         if results:
-            logger.info("analysis ok: %d event(s) enriched", len(results))
+            persistent_count = sum(1 for r in results if r.get("is_persistent"))
+            non_persistent_count = len(results) - persistent_count
+            predictions_created = len(results)
+            alerts_generated = sum(
+                1 for r in results
+                if r.get("alert", {}).get("should_alert") and not r.get("alert", {}).get("is_suppressed_by_cooldown")
+            )
+
+            logger.info(
+                "Analysis execution completion: total_analysed=%d persistent_sources=%d non_persistent_to_ml=%d predictions_created=%d alerts_generated=%d",
+                len(results),
+                persistent_count,
+                non_persistent_count,
+                predictions_created,
+                alerts_generated,
+            )
         return {"ok": True, "analysed": len(results)}
     except Exception as exc:  # noqa: BLE001
-        logger.exception("analysis failed")
+        logger.exception("Analysis execution failed")
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 

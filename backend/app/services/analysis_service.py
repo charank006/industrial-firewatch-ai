@@ -449,8 +449,15 @@ async def apply_enrichment(
     prediction = outcome["prediction"]
     validity = outcome["validity"]
 
+    # Phase 11 & 18: Evaluate Alert Engine & dispatch notifications
+    from app.services.notifications.alert_engine import process_event_alerts
+    alert_eval = await process_event_alerts(db, event, prediction, outcome.get("features"))
+
     event.analysis_status = "complete"
     await db.flush()
+
+    pred_class = getattr(prediction, "predicted_class", getattr(prediction, "prediction", "unknown"))
+    pred_label = getattr(prediction, "predicted_label", getattr(prediction, "label", pred_class))
 
     return {
         "fire_event_id": event.id,
@@ -463,12 +470,14 @@ async def apply_enrichment(
         ),
         "validity": validity.verdict,
         "validity_pct": validity.confidence_pct,
-        "prediction": prediction.prediction,
-        "label": prediction.label,
+        "prediction": pred_class,
+        "label": pred_label,
         "confidence_pct": prediction.confidence_pct,
         "severity": prediction.severity,
         "risk_level": outcome["impact"]["risk_level"],
         "model_version": prediction.model_version,
+        "is_persistent": outcome.get("is_persistent", False),
+        "alert": alert_eval.to_dict(),
     }
 
 

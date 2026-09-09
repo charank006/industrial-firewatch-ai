@@ -239,10 +239,10 @@ async def fetch_detections(
     FRP time series, which is what makes a routine flare distinguishable from
     an industrial fire at all.
     """
-    key = map_key if map_key is not None else settings.NASA_FIRMS_MAP_KEY
+    key = map_key if map_key is not None else settings.effective_firms_map_key
     if not key:
         raise FirmsError(
-            "NASA_FIRMS_MAP_KEY is not configured. Request a free key at "
+            "FIRMS_MAP_KEY / NASA_FIRMS_MAP_KEY is not configured. Request a free key at "
             "https://firms.modaps.eosdis.nasa.gov/api/map_key/ and set it in backend/.env"
         )
 

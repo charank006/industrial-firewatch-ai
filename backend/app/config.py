@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     # --- NASA FIRMS ------------------------------------------------------
     # Backend-only. Never expose to frontend JavaScript (spec 3.1).
     NASA_FIRMS_MAP_KEY: str = ""
+    FIRMS_MAP_KEY: str = ""
+
+    @property
+    def effective_firms_map_key(self) -> str:
+        return self.FIRMS_MAP_KEY or self.NASA_FIRMS_MAP_KEY
+
     FIRMS_BASE_URL: str = "https://firms.modaps.eosdis.nasa.gov"
     # Multiple platforms give enough daily overpasses for an FRP time series,
     # which is what makes Routine Flare separable from Industrial Fire.
@@ -87,6 +93,13 @@ class Settings(BaseSettings):
     ML_CLASS_MAPPING_PATH: str = "models/class_mapping.json"
     ML_METADATA_PATH: str = "models/model_metadata.json"
 
+    # --- Industrial Alert & Notification Engine ---------------------------
+    INDUSTRIAL_ALERT_RADIUS_METERS: float = 2000.0
+    INDUSTRIAL_ALERT_CONFIDENCE_THRESHOLD: float = 0.60
+    ALERT_COOLDOWN_MINUTES: int = 60
+    ALERT_WEBHOOK_URL: str = ""
+    ALERT_WEBHOOK_SECRET: str = ""
+
     # --- Fire event dedup engine (spec 7) --------------------------------
     EVENT_LINK_RADIUS_M: float = 1000.0
     EVENT_LINK_WINDOW_HOURS: int = 12
@@ -102,9 +115,21 @@ class Settings(BaseSettings):
 
     # --- Background scheduling (Phase 7) ---------------------------------
     SCHEDULER_ENABLED: bool = True
-    # 4 sources x 4 polls/hour = 384 requests/day against a ~5000-per-10-minute
-    # FIRMS limit, so cadence is not the constraint; politeness is.
+    FIRMS_ENABLED: bool = True
+    # Default 900 seconds = 15 minutes. Supports 900-1800s.
+    FIRMS_POLL_INTERVAL_SECONDS: int = 900
     FIRMS_POLL_MINUTES: int = 15
+
+    @property
+    def effective_scheduler_enabled(self) -> bool:
+        return self.SCHEDULER_ENABLED and self.FIRMS_ENABLED
+
+    @property
+    def effective_firms_poll_interval_seconds(self) -> int:
+        if self.FIRMS_POLL_INTERVAL_SECONDS > 0:
+            return self.FIRMS_POLL_INTERVAL_SECONDS
+        return max(60, self.FIRMS_POLL_MINUTES * 60)
+
     # Overpass is the bottleneck (2-20s, sometimes 60), so analysis drains a
     # small batch often rather than a large batch rarely.
     ANALYSIS_POLL_MINUTES: int = 2
@@ -132,8 +157,10 @@ class Settings(BaseSettings):
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
+    TWILIO_TO_NUMBER: str = ""
     SENDGRID_API_KEY: str = ""
     SENDGRID_FROM_EMAIL: str = "alerts@firewatch.ai"
+    ALERT_RECIPIENT_EMAIL: str = ""
 
     # Was sourced from VITE_MAP_STYLE_URL - a frontend-only prefix that Vite
     # exposes to the client, never to this process.

@@ -36,8 +36,8 @@ def get_scheduler() -> Optional[AsyncIOScheduler]:
 def start_scheduler() -> Optional[AsyncIOScheduler]:
     global _scheduler
 
-    if not settings.SCHEDULER_ENABLED:
-        logger.info("Scheduler disabled (SCHEDULER_ENABLED=false)")
+    if not settings.effective_scheduler_enabled:
+        logger.info("Scheduler disabled (effective_scheduler_enabled=false)")
         return None
     if _scheduler is not None:
         return _scheduler
@@ -52,9 +52,10 @@ def start_scheduler() -> Optional[AsyncIOScheduler]:
         }
     )
 
+    poll_seconds = settings.effective_firms_poll_interval_seconds
     scheduler.add_job(
         ingest_job,
-        IntervalTrigger(minutes=settings.FIRMS_POLL_MINUTES),
+        IntervalTrigger(seconds=poll_seconds),
         id="firms_ingest",
         name="NASA FIRMS ingest",
         replace_existing=True,
@@ -77,8 +78,9 @@ def start_scheduler() -> Optional[AsyncIOScheduler]:
     scheduler.start()
     _scheduler = scheduler
     logger.info(
-        "Scheduler started - ingest every %d min, analysis every %d min, containment every %d h",
-        settings.FIRMS_POLL_MINUTES,
+        "Scheduler started - FIRMS ingest every %d s (%d min), analysis every %d min, containment every %d h",
+        poll_seconds,
+        poll_seconds // 60,
         settings.ANALYSIS_POLL_MINUTES,
         settings.CONTAINMENT_SWEEP_HOURS,
     )
