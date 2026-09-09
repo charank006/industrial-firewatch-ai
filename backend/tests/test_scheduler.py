@@ -40,6 +40,7 @@ class TestSchedulerConfiguration:
         assert {job.id for job in sched.get_jobs()} == {
             "firms_ingest",
             "event_analysis",
+            "surroundings_retry",
             "containment_sweep",
         }
 
@@ -67,7 +68,7 @@ class TestSchedulerConfiguration:
         monkeypatch.setattr(settings, "SCHEDULER_ENABLED", True)
         scheduler.start_scheduler()
         status = scheduler.job_status()
-        assert len(status) == 3
+        assert len(status) == 4
         assert all(entry["next_run"] for entry in status)
 
 

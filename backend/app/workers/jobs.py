@@ -17,10 +17,13 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy import select
 
+from sqlalchemy import text
+
 from app.config import settings
 from app.database.connection import get_sessionmaker
 from app.models.models import SeedRun
 from app.services import firms_service
+from app.services.osm import client as overpass
 from app.services.aoi_service import active_boundary_name, is_inside_aoi
 from app.services.analysis_service import drain_pending
 from app.services.fire_event_service import mark_stale_events_contained, process_detections
@@ -187,3 +190,62 @@ async def probe_worker() -> Dict[str, Any]:
         )
 
     return {"ok": bool(run.ok) and not stale, "detail": detail, "latency_ms": None}
+
+
+async def surroundings_retry_job(limit: Optional[int] = None) -> Dict[str, Any]:
+    """Requeue events whose OSM enrichment failed, once Overpass is back.
+
+    `surroundings_status='unavailable'` means the fetch FAILED, not that the
+    area is empty - a successful fetch over genuinely unmapped ground returns
+    'sparse'. So these events are missing their industrial, gas, factory and
+    power evidence entirely, which makes Industrial Fire, Routine Flare and
+    Gas/Oil unreachable for them and leaves the facility monitor with fewer
+    sites than really exist. Today's outage left 88 events in that state.
+
+    Nothing else picks them up: the analysis worker only drains `pending`, and
+    these are `complete`. Without this sweep they stay degraded until someone
+    notices and requeues them by hand.
+
+    Gated on Overpass actually answering. Requeuing into a dead service would
+    replace 88 quietly degraded events with 88 slow failures, and would fight
+    the circuit breaker's backoff.
+    """
+    batch = limit or settings.SURROUNDINGS_RETRY_BATCH
+
+    probe = await overpass.probe_overpass()
+    if not probe.get("ok"):
+        logger.debug("Surroundings retry skipped; Overpass unavailable: %s", probe.get("detail"))
+        return {"ok": True, "requeued": 0, "skipped_reason": "overpass unavailable"}
+
+    async with get_sessionmaker()() as session:
+        try:
+            result = await session.execute(
+                text(
+                    """
+                    UPDATE fire_events SET analysis_status = 'pending'
+                     WHERE id IN (
+                       SELECT id FROM fire_events
+                        WHERE surroundings_status = 'unavailable'
+                          AND analysis_status = 'complete'
+                        ORDER BY frp_max_mw DESC
+                        LIMIT :batch
+                     )
+                    RETURNING id
+                    """
+                ),
+                {"batch": batch},
+            )
+            requeued = [row[0] for row in result]
+            await session.commit()
+
+            if requeued:
+                logger.info(
+                    "Overpass is back; requeued %d event(s) for surroundings retry",
+                    len(requeued),
+                )
+            return {"ok": True, "requeued": len(requeued)}
+
+        except Exception as exc:  # noqa: BLE001 - a scheduled job must not die
+            await session.rollback()
+            logger.exception("surroundings retry sweep failed")
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}

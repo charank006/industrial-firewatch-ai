@@ -130,6 +130,11 @@ class Settings(BaseSettings):
     # already handled by its circuit breaker. Left configurable for bulk
     # backfills, off by default.
     OSM_MAX_LOOKUPS_PER_RUN: int = 0
+    # Requeue events whose OSM enrichment failed, once Overpass answers again.
+    # Batched so a long outage's backlog drains steadily instead of flooding
+    # the analysis queue the moment the service returns.
+    SURROUNDINGS_RETRY_MINUTES: int = 20
+    SURROUNDINGS_RETRY_BATCH: int = 20
     CONTAINMENT_SWEEP_HOURS: int = 6
     # Skip the first ingest at boot; useful in development so a restart does
     # not immediately spend FIRMS quota.
