@@ -119,6 +119,8 @@ export function adaptFireEvent(event: ApiFireEvent): ThermalHotspot {
     suggestedAction: event.suggested_action,
     locationName: event.location_name,
     isNew: event.is_new,
+    baselineFrp: event.frp_mean_mw,
+    observationCount: event.detection_count,
   };
 }
 

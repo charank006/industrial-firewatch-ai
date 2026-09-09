@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
@@ -12,6 +12,7 @@ import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
 import { ProbabilityDistributionCard } from '../../components/intelligence/ProbabilityDistributionCard';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { fetchFireDetections } from '../../services/api';
 
 export const IncidentDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,30 +20,56 @@ export const IncidentDetailsPage: React.FC = () => {
   const { hotspots, selectFacilityById } = useIntelligence();
 
   const incident = hotspots.find((h) => h.id === id) || hotspots[0];
+  const [realDetections, setRealDetections] = useState<Array<{ time: string; frp: number; baseline: number }> | null>(null);
+
+  useEffect(() => {
+    if (!incident?.id) return;
+    let isMounted = true;
+    fetchFireDetections(incident.id)
+      .then((data) => {
+        if (isMounted && data?.detections && data.detections.length > 0) {
+          const baseline = incident.baselineFrp || (incident.frpMw * 0.4);
+          const mapped = data.detections.map((d) => ({
+            time: d.time_formatted || d.acquisition_time.slice(11, 16),
+            frp: Number(d.frp_mw.toFixed(1)),
+            baseline: Number(baseline.toFixed(1)),
+          }));
+          setRealDetections(mapped);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [incident?.id]);
 
   const handleFacilityClick = () => {
     selectFacilityById(incident.nearestFacilityId);
     navigate(`/facility-watch?facilityId=${incident.nearestFacilityId}`);
   };
 
-  const baselineValue = incident.baselineFrp ?? (
-    incident.classification.toLowerCase().includes('forest')
-      ? 0.5
-      : incident.classification.toLowerCase().includes('agricultural')
-      ? 1.0
-      : 15.0
-  );
+  const baselineValue = incident?.baselineFrp && incident.baselineFrp > 0
+    ? incident.baselineFrp
+    : (
+      incident?.classification?.toLowerCase().includes('forest')
+        ? 0.5
+        : incident?.classification?.toLowerCase().includes('agricultural')
+        ? 1.0
+        : Number((incident?.frpMw * 0.35).toFixed(1))
+    );
 
-  // Use dynamic event timeline or compute tailored fallback
-  const timelineData = (incident.frpTimeline && incident.frpTimeline.length > 0)
+  // Use dynamic real satellite detections if fetched, or incident timeline, or computed fallback
+  const timelineData = realDetections && realDetections.length > 0
+    ? realDetections
+    : (incident?.frpTimeline && incident.frpTimeline.length > 0)
     ? incident.frpTimeline
     : [
-        { time: 'Day -5', frp: Number((baselineValue * 0.95).toFixed(2)), baseline: baselineValue },
-        { time: 'Day -4', frp: Number((baselineValue * 1.05).toFixed(2)), baseline: baselineValue },
-        { time: 'Day -3', frp: Number((baselineValue * 0.98).toFixed(2)), baseline: baselineValue },
-        { time: 'Day -2', frp: Number((baselineValue * 1.02).toFixed(2)), baseline: baselineValue },
-        { time: 'Day -1', frp: Number((baselineValue * 1.08).toFixed(2)), baseline: baselineValue },
-        { time: incident.timeFormatted || 'Observation', frp: Number(incident.frpMw.toFixed(1)), baseline: baselineValue },
+        { time: 'T-5 Pass', frp: Number((baselineValue * 0.85).toFixed(2)), baseline: baselineValue },
+        { time: 'T-4 Pass', frp: Number((baselineValue * 0.92).toFixed(2)), baseline: baselineValue },
+        { time: 'T-3 Pass', frp: Number((baselineValue * 1.05).toFixed(2)), baseline: baselineValue },
+        { time: 'T-2 Pass', frp: Number((baselineValue * 0.98).toFixed(2)), baseline: baselineValue },
+        { time: 'T-1 Pass', frp: Number((baselineValue * 1.15).toFixed(2)), baseline: baselineValue },
+        { time: incident?.timeFormatted || 'Peak Detect', frp: Number(incident?.frpMw.toFixed(1)), baseline: baselineValue },
       ];
 
   const elevationRatio = baselineValue > 0
