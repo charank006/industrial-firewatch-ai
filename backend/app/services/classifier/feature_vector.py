@@ -233,6 +233,8 @@ async def build_feature_vector(
         "vpd_anomaly_kpa": None,
         "weather_baseline_quality": None,
         "weather_baseline_samples": 0,
+        "mines_within_1km": 0,
+        "nearest_mine_m": None,
         "builtup_fraction": 0.0,
         "land_cover_source": None,
     }
@@ -243,6 +245,7 @@ async def build_feature_vector(
             "farmland_area_km2", "farmland_fraction", "residential_area_km2",
             "residential_fraction", "water_area_km2", "factories_within_1km",
             "gas_facilities_within_1km", "power_infra_within_1km", "building_count",
+            "mines_within_1km", "nearest_mine_m",
             "hospitals", "schools", "fire_stations", "road_length_km", "nearest_factory_m",
             "nearest_gas_facility_m", "nearest_residential_m", "nearest_forest_m",
             "nearest_farmland_m", "inside_industrial", "inside_forest", "inside_farmland",

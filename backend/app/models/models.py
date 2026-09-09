@@ -300,6 +300,7 @@ class FirePrediction(Base):
     agriculture_probability = Column(Float, nullable=False, default=0.0)
     gas_oil_probability = Column(Float, nullable=False, default=0.0)
     urban_probability = Column(Float, nullable=False, default=0.0)
+    mining_probability = Column(Float, nullable=False, default=0.0)
     unknown_probability = Column(Float, nullable=False, default=0.0)
 
     severity = Column(String, nullable=False, default="MEDIUM")

@@ -239,6 +239,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
       'Agricultural Burning': 0,
       'Gas/Oil': 0,
       'Urban': 0,
+      'Mining / Extraction': 0,
       'Unknown Anomaly': 0,
     };
 

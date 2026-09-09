@@ -7,6 +7,7 @@ export type EventClassification =
   | 'Agricultural Burning'
   | 'Gas/Oil'
   | 'Urban'
+  | 'Mining / Extraction'
   | 'Unknown Anomaly';
 
 
@@ -62,6 +63,12 @@ export interface ThermalHotspot {
    * count on FIRMS' own map.
    */
   detectionCount: number;
+  /** Operational risk 0-100, deliberately separate from `confidence`. */
+  riskScore?: number;
+  riskLevel?: string;
+  /** Crossed the risk threshold, so it is tracked as an incident. */
+  isActionable?: boolean;
+  monitoringUntil?: string;
   historicalOccurrenceCount: number;
   firstSeenDate: string;
   reasoningSteps: ReasoningStep[];
@@ -157,6 +164,7 @@ export type FireClassId =
   | 'agriculture'
   | 'gas_oil'
   | 'urban'
+  | 'mining'
   | 'unknown';
 
 export interface WeatherDetail {

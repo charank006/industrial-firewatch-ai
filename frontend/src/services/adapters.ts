@@ -41,6 +41,7 @@ export const CLASS_LABEL: Record<string, EventClassification> = {
   agriculture: 'Agricultural Burning',
   gas_oil: 'Gas/Oil',
   urban: 'Urban',
+  mining: 'Mining / Extraction',
   unknown: 'Unknown Anomaly',
 };
 
@@ -114,6 +115,10 @@ export function adaptFireEvent(event: ApiFireEvent): ThermalHotspot {
     validityConfidencePct: event.validity?.confidence_pct,
     severity: oneOf(SEVERITY_VALUES, event.severity, 'MEDIUM'),
     detectionCount: event.detection_count,
+    riskScore: event.risk_score ?? undefined,
+    riskLevel: event.risk_level ?? undefined,
+    isActionable: event.is_actionable ?? undefined,
+    monitoringUntil: event.monitoring_until ?? undefined,
     historicalOccurrenceCount: event.recurrence_count,
     firstSeenDate: (event.first_detected ?? timestamp).slice(0, 10),
     reasoningSteps: event.reasoning_steps.map(adaptReasoningStep),

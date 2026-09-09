@@ -20,6 +20,8 @@ import {
   X,
 } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { RiskBadge } from '../../components/intelligence/RiskBadge';
+import { ValidityBadge } from '../../components/intelligence/ValidityBadge';
 import type { ThermalHotspot } from '../../types';
 
 export const IncidentsPage: React.FC = () => {
@@ -298,6 +300,7 @@ export const IncidentsPage: React.FC = () => {
                 <th className="p-3.5 font-bold">AUDIT RECORD ID</th>
                 <th className="p-3.5 font-bold">TIMESTAMP (IST / UTC)</th>
                 <th className="p-3.5 font-bold">CLASSIFICATION</th>
+                <th className="p-3.5 font-bold">RISK &amp; VALIDITY</th>
                 <th className="p-3.5 font-bold">FACILITY & FENCE MATCH</th>
                 <th className="p-3.5 font-bold">FRP & BRIGHTNESS</th>
                 <th className="p-3.5 font-bold">VERDICT & PRIORITY</th>
@@ -336,6 +339,22 @@ export const IncidentsPage: React.FC = () => {
                       <td className="p-3.5">
                         <div className="font-semibold text-white font-sans text-xs">{item.classification}</div>
                         <div className="text-[10px] text-slate-400 font-mono">{item.landCover}</div>
+                      </td>
+
+                      {/* Risk and validity — three separate questions, kept
+                          separate: is it real, what is it, how dangerous. */}
+                      <td className="p-3.5">
+                        <div className="flex flex-col items-start gap-1">
+                          <RiskBadge
+                            score={item.riskScore}
+                            level={item.riskLevel}
+                            actionable={item.isActionable}
+                          />
+                          <ValidityBadge
+                            verdict={item.validityVerdict}
+                            confidencePct={item.validityConfidencePct}
+                          />
+                        </div>
                       </td>
 
                       {/* Facility & Fence Match */}

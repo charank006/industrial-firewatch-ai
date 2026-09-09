@@ -41,6 +41,7 @@ CLASS_LABEL = {
     "agriculture": "Agricultural Burning",
     "gas_oil": "Gas/Oil",
     "urban": "Urban",
+    "mining": "Mining / Extraction",
     "unknown": "Unknown Anomaly",
 }
 
@@ -153,6 +154,16 @@ EVIDENCE: List[EvidenceTerm] = [
         lambda f: clamp(
             (_get(f, "scrub_grass_fraction") - _get(f, "forest_fraction")) / 0.5
         ),
+    ),
+    EvidenceTerm(
+        "mine_tags",
+        "Mining / Quarrying Infrastructure",
+        "{mines_within_1km:.0f} mine or quarry site(s) mapped within 1 km",
+        # Specific tags, like gas_tags for Gas/Oil. Without this a coal seam
+        # fire inside an open-cast mine reads as a generic factory fire: the
+        # quarry is industrial land, so every industrial term fires and
+        # nothing distinguishes it.
+        lambda f: clamp(_get(f, "mines_within_1km") / 1.5),
     ),
     EvidenceTerm(
         "forest_area",
@@ -468,6 +479,8 @@ _CLASS_ACTION = {
     "forest": "Vegetation fire indicated. Assess spread risk against prevailing wind.",
     "agriculture": "Pattern consistent with agricultural residue burning. Log for air-quality reporting.",
     "urban": "Built-up area involved. Assess structure and population exposure.",
+    "mining": "Mine or quarry site. Check for coal seam or spoil-heap combustion, which "
+               "burns for months and is not extinguished like a surface fire.",
     "unknown": "Source could not be attributed with confidence. Manual review recommended.",
 }
 

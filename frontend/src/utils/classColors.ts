@@ -17,6 +17,7 @@ export const CLASS_COLOR: Record<EventClassification, string> = {
   'Agricultural Burning': '#FFB020', // amber
   'Gas/Oil': '#A855F7',              // purple
   'Urban': '#EC4899',                // pink
+  'Mining / Extraction': '#8B6F47',  // earth brown
   'Unknown Anomaly': '#66768A',      // grey
 };
 

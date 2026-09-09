@@ -138,14 +138,17 @@ class Settings(BaseSettings):
     # --- risk and incident lifecycle --------------------------------------
     # Score at or above which an event becomes a tracked incident.
     #
-    # Measured before choosing: across 143 live events the risk score ranged
-    # 12.5 to 56.8, median 24.6. A 70 threshold selected ZERO events - the
-    # ceiling is low because most Indian detections are small agricultural
-    # burns, and because the historical-anomaly component is still cold
-    # (almost no location yet has a prior detection within 1 km to form a
-    # baseline from). 50 selects 4 of 143, about 3%, which is a sensible
-    # incident rate. Revisit as history accumulates and scores spread upward.
-    RISK_INCIDENT_THRESHOLD: float = 50.0
+    # 70 is workable and is what the scale is calibrated against. Reference
+    # scenarios in test_risk_engine.py: a refinery fire beside a town scores
+    # 88.7, a gas blowout 91.3, a large dry-windy forest fire 62.5, a routine
+    # flare at its own normal 42.9, a crop burn in an empty field 23.6.
+    #
+    # It currently selects ZERO of 144 live events. That is the correct
+    # answer, not a broken one - the largest live detection is about 8 MW of
+    # crop burning in an empty field, and nothing in the sample is dangerous.
+    # An empty incident registry when there are no dangerous fires is what
+    # this system should say.
+    RISK_INCIDENT_THRESHOLD: float = 70.0
     # How long an incident stays under active monitoring.
     INCIDENT_MONITORING_HOURS: int = 48
     # How often an active incident's risk is recomputed against fresh weather.

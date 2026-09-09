@@ -212,6 +212,7 @@ def serialise_event(
             "agriculture": prediction.agriculture_probability,
             "gas_oil": prediction.gas_oil_probability,
             "urban": prediction.urban_probability,
+            "mining": prediction.mining_probability,
             "unknown": prediction.unknown_probability,
         }
         reasoning = prediction.reasoning_steps or reasoning
@@ -556,6 +557,7 @@ async def get_prediction(fire_id: str, db: AsyncSession = Depends(get_db)) -> Di
             "agriculture": prediction.agriculture_probability,
             "gas_oil": prediction.gas_oil_probability,
             "urban": prediction.urban_probability,
+            "mining": prediction.mining_probability,
             "unknown": prediction.unknown_probability,
         },
         "severity": prediction.severity,

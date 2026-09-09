@@ -340,6 +340,7 @@ async def classify_event(
             agriculture_probability=probabilities["agriculture"],
             gas_oil_probability=probabilities["gas_oil"],
             urban_probability=probabilities["urban"],
+            mining_probability=probabilities["mining"],
             unknown_probability=probabilities["unknown"],
             severity=prediction.severity,
             model_version=prediction.model_version,

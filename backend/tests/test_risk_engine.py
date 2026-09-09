@@ -138,3 +138,67 @@ class TestScale:
         assert level_for(65) == "HIGH"
         assert level_for(40) == "MODERATE"
         assert level_for(10) == "LOW"
+
+
+class TestCalibrationReferenceCases:
+    """What the scale means, pinned to scenarios rather than to today's data.
+
+    The threshold selects zero events on the current sample. That is the
+    correct answer, not a broken one: the largest live detection is about
+    8 MW of crop burning in an empty field. These cases exist so the scale
+    can be checked against fires that WOULD be dangerous, and so a future
+    change that quietly compresses the range fails here.
+    """
+
+    def scenario(self, **kw):
+        base = {
+            "frp_latest_mw": 5.0, "site_median_frp_mw": None,
+            "hospitals": 0, "schools": 0, "building_count": 0,
+            "residential_area_km2": 0.0, "gas_facilities_within_1km": 0,
+            "power_infra_within_1km": 0, "factories_within_1km": 0,
+            "inside_industrial": False, "nearest_residential_m": None,
+            "vpd_anomaly_kpa": 0.0, "wind_speed_ms": 2.0, "dry_hours": 0.0,
+            "precipitation_24h_mm": 0.0, "osm_coverage": "ok",
+            "weather_baseline_quality": "ok",
+        }
+        return {**base, **kw}
+
+    def test_a_refinery_fire_beside_a_town_is_actionable(self):
+        r = assess_risk("industrial", self.scenario(
+            frp_latest_mw=180, site_median_frp_mw=22, hospitals=1, schools=3,
+            building_count=120, residential_area_km2=0.9, nearest_residential_m=200,
+            inside_industrial=True, gas_facilities_within_1km=3,
+            power_infra_within_1km=2, factories_within_1km=4,
+            vpd_anomaly_kpa=1.2, wind_speed_ms=8.0, dry_hours=60), 0.95)
+        assert r.score >= 70
+        assert r.level == "EXTREME"
+
+    def test_a_gas_facility_blowout_is_actionable(self):
+        r = assess_risk("gas_oil", self.scenario(
+            frp_latest_mw=260, site_median_frp_mw=30, hospitals=1, schools=2,
+            building_count=80, residential_area_km2=0.6, nearest_residential_m=300,
+            inside_industrial=True, gas_facilities_within_1km=5,
+            vpd_anomaly_kpa=1.0, wind_speed_ms=10.0, dry_hours=48), 0.95)
+        assert r.score >= 70
+
+    def test_a_crop_burn_in_an_empty_field_is_not(self):
+        r = assess_risk("agriculture", self.scenario(frp_latest_mw=9, dry_hours=20), 0.95)
+        assert r.score < 35
+        assert r.level == "LOW"
+
+    def test_a_flare_running_at_its_own_normal_is_not(self):
+        """High absolute power, but this is what the site always does."""
+        r = assess_risk("flare", self.scenario(
+            frp_latest_mw=55, site_median_frp_mw=53, inside_industrial=True,
+            gas_facilities_within_1km=3, factories_within_1km=2), 0.95)
+        assert r.score < 70
+
+    def test_the_scale_orders_these_correctly(self):
+        s = self.scenario
+        gas = assess_risk("gas_oil", s(frp_latest_mw=260, site_median_frp_mw=30,
+            hospitals=1, building_count=80, residential_area_km2=0.6,
+            inside_industrial=True, gas_facilities_within_1km=5), 0.95).score
+        forest = assess_risk("forest", s(frp_latest_mw=140, site_median_frp_mw=8,
+            building_count=15, vpd_anomaly_kpa=2.0, wind_speed_ms=11.0, dry_hours=90), 0.95).score
+        crop = assess_risk("agriculture", s(frp_latest_mw=9, dry_hours=20), 0.95).score
+        assert gas > forest > crop

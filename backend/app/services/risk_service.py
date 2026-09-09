@@ -44,6 +44,7 @@ CLASS_HAZARD: Dict[str, float] = {
     "gas_oil": 1.00,      # pressurised hydrocarbon; explosion and toxic release
     "industrial": 0.90,   # unplanned fire at a plant; unknown inventory
     "urban": 0.75,        # structures and people
+    "mining": 0.60,       # persistent, toxic smoke, but usually away from housing
     "flare": 0.25,        # designed, controlled combustion
     "forest": 0.55,       # spreads, but rarely toxic
     "agriculture": 0.30,  # intended, usually bounded by the field

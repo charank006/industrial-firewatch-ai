@@ -463,3 +463,63 @@ class TestForestSaturation:
 
         term = next(t for t in EVIDENCE if t.key == "forest_area")
         assert term.compute(features(forest_fraction=0.85)) == 1.0
+
+
+class TestMiningExtraction:
+    """Quarry and mine tags were already extracted but had nowhere to go, so a
+    coal seam fire inside an open-cast mine read as a generic factory fire:
+    the quarry is industrial land, every industrial term fires, and nothing
+    distinguishes it. Mining is its own class now."""
+
+    COAL_MINE = features(
+        frp_latest_mw=6.0, inside_industrial=True, industrial_fraction=0.6,
+        industrial_area_km2=1.9, mines_within_1km=2, nearest_mine_m=0.0,
+        gas_facilities_within_1km=0, recurrence_count=8, detection_count=5,
+    )
+
+    def test_a_fire_at_a_mine_reads_as_mining(self):
+        assert classify(self.COAL_MINE).prediction == "mining"
+
+    def test_the_same_site_without_mine_tags_is_not_mining(self):
+        """Isolates the cause: identical fixture, mine signal removed."""
+        no_mine = features(**{**self.COAL_MINE, "mines_within_1km": 0, "nearest_mine_m": None})
+        assert classify(no_mine).prediction != "mining"
+
+    def test_gas_infrastructure_still_pulls_toward_gas_oil(self):
+        """A site with both a quarry and gas installations is genuinely
+        ambiguous, so this asserts the signals compose rather than picking a
+        winner the evidence does not justify: adding gas infrastructure must
+        raise Gas/Oil's share."""
+        without = classify(self.COAL_MINE).probabilities["gas_oil"]
+        with_gas = classify(features(**{
+            **self.COAL_MINE, "gas_facilities_within_1km": 4,
+            "nearest_gas_facility_m": 80.0,
+        })).probabilities["gas_oil"]
+        assert with_gas > without
+
+    def test_a_refinery_with_no_mine_still_reads_as_gas_oil(self):
+        refinery = features(
+            frp_latest_mw=40.0, inside_industrial=True, industrial_fraction=0.6,
+            industrial_area_km2=1.9, gas_facilities_within_1km=4,
+            nearest_gas_facility_m=80.0, mines_within_1km=0, detection_count=3,
+        )
+        assert classify(refinery).prediction == "gas_oil"
+
+    def test_it_does_not_steal_agriculture(self):
+        cropland = features(frp_latest_mw=6.0, farmland_fraction=0.7,
+                            mines_within_1km=0, detection_count=2)
+        assert classify(cropland).prediction == "agriculture"
+
+    def test_the_class_is_registered_everywhere_it_must_be(self):
+        """A class present in the roster but missing from a label, hazard or
+        pollutant map fails at runtime, not at import."""
+        from app.services.classifier.scorer import CLASS_LABEL, load_rules
+        from app.services.impact_service import POTENTIAL_POLLUTANTS
+        from app.services.risk_service import CLASS_HAZARD
+
+        rules, _ = load_rules()
+        for cls in rules["classes"]:
+            assert cls in CLASS_LABEL, cls
+            assert cls in CLASS_HAZARD, cls
+            assert cls in POTENTIAL_POLLUTANTS, cls
+            assert cls in rules["bias"], cls

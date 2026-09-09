@@ -101,6 +101,10 @@ export interface ApiFireEvent {
   is_new: boolean;
   reasoning_steps: ApiReasoningStep[];
   suggested_action: string;
+  risk_score: number | null;
+  risk_level: string | null;
+  is_actionable: boolean | null;
+  monitoring_until: string | null;
   /** Detection validity - answered separately from, and before, the class. */
   validity: {
     verdict: string;
