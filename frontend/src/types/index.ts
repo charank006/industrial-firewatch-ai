@@ -90,7 +90,6 @@ export interface ThermalHotspot {
   classProbabilities?: Record<string, number>;
   modelVersion?: string;
   topFeatures?: Array<{ feature: string; value: number; model_importance_gain: number }>;
-  riskScore?: number;
   nearestFacilityType?: string;
   sensorConfidenceRate?: number;
   mlConfidenceRate?: number;
