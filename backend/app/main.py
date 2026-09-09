@@ -59,6 +59,7 @@ app = FastAPI(
 # CORS Middleware Configuration
 # Explicitly allowing Render frontend URL (no trailing slash) and local dev origins
 allowed_origins = list(set([
+    "https://industrial-firewatch-ai.vercel.app",
     "https://industrial-firewatch-frontend.onrender.com",
     "https://industrial-firewatch-ai-2.onrender.com",
     "http://localhost:5173",
