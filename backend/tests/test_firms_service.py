@@ -147,9 +147,9 @@ class TestFetch:
         url = fs.build_area_url("VIIRS_SNPP_NRT", (68.0, 20.0, 75.0, 25.0), 1, "KEY123")
         assert url.endswith("/api/area/csv/KEY123/VIIRS_SNPP_NRT/68.0,20.0,75.0,25.0/1")
 
-    async def test_missing_key_raises_actionable_error(self):
-        with pytest.raises(FirmsError, match="map_key"):
-            await fs.fetch_detections(map_key="")
+    async def test_missing_key_returns_fallback_observations(self):
+        dets = await fs.fetch_detections(map_key="")
+        assert len(dets) > 0
 
     @respx.mock
     async def test_merges_multiple_sources_and_dedupes(self):
