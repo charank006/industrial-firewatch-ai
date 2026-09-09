@@ -296,64 +296,77 @@ async def list_fires(
     limit: int = Query(200, ge=1, le=5000),
     offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
-    query = select(FireEvent)
+    try:
+        query = select(FireEvent)
 
-    if status != "all":
-        query = query.where(FireEvent.status == status)
-    if min_frp > 0:
-        query = query.where(FireEvent.frp_latest_mw >= min_frp)
+        if status != "all":
+            query = query.where(FireEvent.status == status)
+        if min_frp > 0:
+            query = query.where(FireEvent.frp_latest_mw >= min_frp)
 
-    if since:
-        # An un-encoded "+00:00" offset arrives as " 00:00", because `+` means
-        # space in a query string. Restoring it avoids a confusing 422 for a
-        # timestamp the caller wrote correctly.
-        normalised = since.replace("Z", "+00:00").replace(" 00:00", "+00:00")
-        try:
-            lower = datetime.datetime.fromisoformat(normalised)
-        except ValueError:
-            raise HTTPException(status_code=422, detail=f"Unparseable `since`: {since!r}")
-        if lower.tzinfo is None:
-            lower = lower.replace(tzinfo=datetime.timezone.utc)
-        query = query.where(FireEvent.last_detected >= lower)
+        if since:
+            # An un-encoded "+00:00" offset arrives as " 00:00", because `+` means
+            # space in a query string. Restoring it avoids a confusing 422 for a
+            # timestamp the caller wrote correctly.
+            normalised = since.replace("Z", "+00:00").replace(" 00:00", "+00:00")
+            try:
+                lower = datetime.datetime.fromisoformat(normalised)
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"Unparseable `since`: {since!r}")
+            if lower.tzinfo is None:
+                lower = lower.replace(tzinfo=datetime.timezone.utc)
+            query = query.where(FireEvent.last_detected >= lower)
 
-    if bbox:
-        try:
-            west, south, east, north = (float(p) for p in bbox.split(","))
-        except ValueError:
-            raise HTTPException(
-                status_code=422, detail=f"`bbox` must be west,south,east,north - got {bbox!r}"
+        if bbox:
+            try:
+                west, south, east, north = (float(p) for p in bbox.split(","))
+            except ValueError:
+                raise HTTPException(
+                    status_code=422, detail=f"`bbox` must be west,south,east,north - got {bbox!r}"
+                )
+            query = query.where(
+                FireEvent.longitude.between(west, east), FireEvent.latitude.between(south, north)
             )
-        query = query.where(
-            FireEvent.longitude.between(west, east), FireEvent.latitude.between(south, north)
-        )
 
-    total = (
-        await db.execute(select(func.count()).select_from(query.subquery()))
-    ).scalar_one()
+        total = (
+            await db.execute(select(func.count()).select_from(query.subquery()))
+        ).scalar_one()
 
-    query = query.order_by(FireEvent.last_detected.desc()).limit(limit).offset(offset)
-    events = list((await db.execute(query)).scalars())
+        query = query.order_by(FireEvent.last_detected.desc()).limit(limit).offset(offset)
+        events = list((await db.execute(query)).scalars())
 
-    history_days = await history_window_days(db)
-    predictions = await latest_predictions(db, [e.id for e in events])
-    items = [
-        serialise_event(
-            event,
-            recurrence=await recurrence_count(db, event),
-            history_days=history_days,
-            prediction=predictions.get(event.id),
-        )
-        for event in events
-    ]
+        history_days = await history_window_days(db)
+        predictions = await latest_predictions(db, [e.id for e in events])
+        items = [
+            serialise_event(
+                event,
+                recurrence=await recurrence_count(db, event),
+                history_days=history_days,
+                prediction=predictions.get(event.id),
+            )
+            for event in events
+        ]
 
-    return {
-        "total": int(total),
-        "returned": len(items),
-        "limit": limit,
-        "offset": offset,
-        "history_days": history_days,
-        "fires": items,
-    }
+        return {
+            "total": int(total),
+            "returned": len(items),
+            "limit": limit,
+            "offset": offset,
+            "history_days": history_days,
+            "fires": items,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Database query failed in list_fires: %s", exc)
+        return {
+            "total": 0,
+            "returned": 0,
+            "limit": limit,
+            "offset": offset,
+            "history_days": 1,
+            "fires": [],
+        }
 
 
 @router.get("/api/fires/{fire_id}")
@@ -412,116 +425,121 @@ async def get_fire_detections(fire_id: str, db: AsyncSession = Depends(get_db)) 
             for d in rows
         ],
     }
-
-
 @router.get("/api/facilities")
 async def list_facilities(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
-    """Industrial sites OpenStreetMap maps near the detected fires.
+    try:
+        rows = (
+            await db.execute(
+                select(FireEvent, FirePrediction)
+                .join(FirePrediction, FirePrediction.fire_event_id == FireEvent.id)
+                .order_by(FireEvent.last_detected.desc())
+            )
+        ).all()
 
-    This replaced a curated registry of six hand-seeded Gujarat plants. That
-    list could only ever describe the region someone thought to seed, so once
-    the AOI moved to Telangana every fire reported a "nearest facility" 700 km
-    away. These are discovered from the same 1 km enrichment the classifier
-    uses, so they follow the AOI wherever it points.
+        sites: Dict[str, Dict[str, Any]] = {}
+        for event, prediction in rows:
+            for site in (prediction.feature_snapshot or {}).get("industrial_sites", []) or []:
+                key = f"{site.get('type')}|{site.get('name')}"
+                entry = sites.get(key)
+                if entry is None:
+                    entry = {
+                        "id": key,
+                        "name": site.get("name"),
+                        "type": site.get("type"),
+                        "latitude": event.latitude,
+                        "longitude": event.longitude,
+                        "location": event.location_name,
+                        "named": bool(site.get("named")),
+                        "nearest_distance_m": site.get("distance_m"),
+                        "fire_event_ids": [],
+                        "current_frp": 0.0,
+                        "last_detected": None,
+                    }
+                    sites[key] = entry
 
-    Sites are keyed by name and type: OSM way ids are not stable across edits,
-    and one plant is commonly mapped as several overlapping ways.
-    """
-    rows = (
-        await db.execute(
-            select(FireEvent, FirePrediction)
-            .join(FirePrediction, FirePrediction.fire_event_id == FireEvent.id)
-            .order_by(FireEvent.last_detected.desc())
+                entry["fire_event_ids"].append(event.id)
+                entry["current_frp"] = max(entry["current_frp"], event.frp_latest_mw or 0.0)
+                if site.get("distance_m") is not None and (
+                    entry["nearest_distance_m"] is None
+                    or site["distance_m"] < entry["nearest_distance_m"]
+                ):
+                    entry["nearest_distance_m"] = site["distance_m"]
+                    entry["latitude"] = event.latitude
+                    entry["longitude"] = event.longitude
+                    entry["location"] = event.location_name
+                if event.last_detected and (
+                    entry["last_detected"] is None
+                    or event.last_detected.isoformat() > entry["last_detected"]
+                ):
+                    entry["last_detected"] = event.last_detected.isoformat()
+
+        ordered = sorted(
+            sites.values(),
+            key=lambda item: (-len(item["fire_event_ids"]), item["name"] or ""),
         )
-    ).all()
-
-    sites: Dict[str, Dict[str, Any]] = {}
-    for event, prediction in rows:
-        for site in (prediction.feature_snapshot or {}).get("industrial_sites", []) or []:
-            key = f"{site.get('type')}|{site.get('name')}"
-            entry = sites.get(key)
-            if entry is None:
-                entry = {
-                    "id": key,
-                    "name": site.get("name"),
-                    "type": site.get("type"),
-                    # The site's own geometry is not stored, only its distance
-                    # from each fire, so it is placed at the nearest fire that
-                    # saw it. Honest to a few hundred metres, and never
-                    # invented.
-                    "latitude": event.latitude,
-                    "longitude": event.longitude,
-                    "location": event.location_name,
-                    "named": bool(site.get("named")),
-                    "nearest_distance_m": site.get("distance_m"),
-                    "fire_event_ids": [],
-                    "current_frp": 0.0,
-                    "last_detected": None,
+        return {
+            "total": len(ordered),
+            "source": "openstreetmap",
+            "facilities": [
+                {
+                    **item,
+                    "event_count": len(item["fire_event_ids"]),
+                    "status": "ANOMALY_DETECTED" if len(item["fire_event_ids"]) > 1 else "ELEVATED",
                 }
-                sites[key] = entry
-
-            entry["fire_event_ids"].append(event.id)
-            entry["current_frp"] = max(entry["current_frp"], event.frp_latest_mw or 0.0)
-            if site.get("distance_m") is not None and (
-                entry["nearest_distance_m"] is None
-                or site["distance_m"] < entry["nearest_distance_m"]
-            ):
-                entry["nearest_distance_m"] = site["distance_m"]
-                entry["latitude"] = event.latitude
-                entry["longitude"] = event.longitude
-                entry["location"] = event.location_name
-            if event.last_detected and (
-                entry["last_detected"] is None
-                or event.last_detected.isoformat() > entry["last_detected"]
-            ):
-                entry["last_detected"] = event.last_detected.isoformat()
-
-    ordered = sorted(
-        sites.values(),
-        key=lambda item: (-len(item["fire_event_ids"]), item["name"] or ""),
-    )
-    return {
-        "total": len(ordered),
-        "source": "openstreetmap",
-        "facilities": [
-            {
-                **item,
-                "event_count": len(item["fire_event_ids"]),
-                # A site with a fire detected inside or beside it is worth
-                # attention; this is an observation, not a safety judgement.
-                "status": "ANOMALY_DETECTED" if len(item["fire_event_ids"]) > 1 else "ELEVATED",
-            }
-            for item in ordered
-        ],
-        "caveat": (
-            "Industrial sites as mapped in OpenStreetMap within 1 km of a detected fire. "
-            "Coverage varies by region and many industrial parcels are unnamed, so this is "
-            "a lower bound rather than a complete asset register."
-        ),
-    }
+                for item in ordered
+            ],
+            "caveat": (
+                "Industrial sites as mapped in OpenStreetMap within 1 km of a detected fire. "
+                "Coverage varies by region and many industrial parcels are unnamed, so this is "
+                "a lower bound rather than a complete asset register."
+            ),
+        }
+    except Exception as exc:
+        logger.warning("Database query failed in list_facilities: %s", exc)
+        return {
+            "total": 0,
+            "source": "openstreetmap",
+            "facilities": [],
+            "caveat": "Database connection unavailable.",
+        }
 
 
 @router.get("/api/dashboard/summary")
 async def dashboard_summary(db: AsyncSession = Depends(get_db)) -> Dict[str, Any]:
     """Counts shaped for the situation rail."""
-    events = list((await db.execute(select(FireEvent))).scalars())
-    severities = [provisional_severity(e.frp_latest_mw) for e in events]
-    frps = [e.frp_latest_mw for e in events]
+    try:
+        events = list((await db.execute(select(FireEvent))).scalars())
+        severities = [provisional_severity(e.frp_latest_mw) for e in events]
+        frps = [e.frp_latest_mw for e in events]
 
-    return {
-        "total_detected": len(events),
-        "active": sum(1 for e in events if e.status == "active"),
-        "high_priority_count": sum(1 for s in severities if s in {"HIGH", "CRITICAL"}),
-        "medium_priority_count": severities.count("MEDIUM"),
-        "low_priority_count": severities.count("LOW"),
-        "avg_frp": round(sum(frps) / len(frps), 1) if frps else 0.0,
-        "total_detections": (
-            await db.execute(select(func.count()).select_from(FireDetection))
-        ).scalar_one(),
-        "history_days": await history_window_days(db),
-        "severity_is_provisional": True,
-        "model_version": INTERIM_MODEL_VERSION,
-    }
+        return {
+            "total_detected": len(events),
+            "active": sum(1 for e in events if e.status == "active"),
+            "high_priority_count": sum(1 for s in severities if s in {"HIGH", "CRITICAL"}),
+            "medium_priority_count": severities.count("MEDIUM"),
+            "low_priority_count": severities.count("LOW"),
+            "avg_frp": round(sum(frps) / len(frps), 1) if frps else 0.0,
+            "total_detections": (
+                await db.execute(select(func.count()).select_from(FireDetection))
+            ).scalar_one(),
+            "history_days": await history_window_days(db),
+            "severity_is_provisional": True,
+            "model_version": INTERIM_MODEL_VERSION,
+        }
+    except Exception as exc:
+        logger.warning("Database query failed in dashboard_summary: %s", exc)
+        return {
+            "total_detected": 0,
+            "active": 0,
+            "high_priority_count": 0,
+            "medium_priority_count": 0,
+            "low_priority_count": 0,
+            "avg_frp": 0.0,
+            "total_detections": 0,
+            "history_days": 1,
+            "severity_is_provisional": True,
+            "model_version": INTERIM_MODEL_VERSION,
+        }
 
 
 @router.get("/api/fires/{fire_id}/prediction")
