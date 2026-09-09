@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Globe from 'globe.gl';
 import { 
@@ -6,17 +6,14 @@ import {
   Flame, 
   ShieldAlert, 
   Radar, 
-  Building2, 
   Activity, 
   CheckCircle2, 
   Radio, 
   Layers, 
   Compass, 
-  ExternalLink, 
   Zap, 
   Filter, 
   Clock, 
-  Crosshair, 
   AlertTriangle, 
   ChevronRight,
   Sparkles,
@@ -27,7 +24,6 @@ import {
 import { getEarthNightTexture } from '../../utils/earthTexture';
 import { HISTORICAL_EVENTS } from '../../data/historicalEvents';
 import { LANDING_SIGNALS, type LandingSignal } from '../../data/landingSignals';
-import { MOCK_FACILITIES } from '../../data/mockFacilities';
 
 export default function GeoFlareLanding() {
   const navigate = useNavigate();
@@ -63,11 +59,11 @@ export default function GeoFlareLanding() {
     // Map historical events and active landing signals to globe HTML elements
     const globePoints = [
       ...HISTORICAL_EVENTS.slice(0, 12).map((ev) => ({
-        lat: ev.latitude,
-        lng: ev.longitude,
-        name: ev.title,
-        color: ev.severity === 'CRITICAL' ? '#EF4444' : '#F97316',
-        frp: `${ev.frpMw} MW`,
+        lat: ev.lat,
+        lng: ev.lng,
+        name: ev.name,
+        color: ev.severityContext === 'CRITICAL' || ev.severityContext === 'CATASTROPHIC' ? '#EF4444' : '#F97316',
+        frp: ev.eventType,
         type: 'HISTORICAL'
       })),
       ...LANDING_SIGNALS.map((sig) => ({

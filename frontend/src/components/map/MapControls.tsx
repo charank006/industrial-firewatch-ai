@@ -7,7 +7,7 @@ export const MapControls: React.FC = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
   return (
-    <div className="absolute top-3 right-3 z-[1000] font-mono text-xs">
+    <div className="absolute top-3 right-3 z-10 font-mono text-xs">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 bg-[#081019]/95 border border-[#253340] rounded-md text-slate-200 hover:text-white hover:border-[#3DB7D9] transition shadow-lg flex items-center space-x-1.5 backdrop-blur-md"

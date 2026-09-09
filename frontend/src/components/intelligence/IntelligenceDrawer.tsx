@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowRight,
-  ChevronRight,
   Factory,
   History,
   X,
 } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 import { ReasoningFlow } from './ReasoningFlow';
+import { ProbabilityDistributionCard } from './ProbabilityDistributionCard';
 
 export const IntelligenceDrawer: React.FC = () => {
   const { selectedIncident, isDrawerOpen, setIsDrawerOpen, selectFacilityById } =
@@ -61,62 +61,100 @@ export const IntelligenceDrawer: React.FC = () => {
           SELECTED OBSERVATION
         </span>
         <h2 className="text-base font-semibold text-white tracking-wide font-sans">
-          {selectedIncident.classification}
+          {selectedIncident.classification.replace(/_/g, ' ').toUpperCase()}
         </h2>
         <p className="text-xs text-[#A7B4C1]">{selectedIncident.locationName}</p>
       </div>
 
-      {/* Telemetry Metrics Grid */}
+      {/* Risk Score & Priority Meter */}
+      <div className="p-3 bg-[#0D151E] border border-[#253340] rounded-lg space-y-2 font-mono text-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-[#A7B4C1] uppercase tracking-wider flex items-center space-x-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-[#F04438]" />
+            <span>ASSESSED RISK SCORE</span>
+          </span>
+          <span className="font-bold text-sm text-[#F04438]">
+            {selectedIncident.riskScore ?? 55} / 100
+          </span>
+        </div>
+        <div className="w-full h-1.5 bg-[#081019] rounded-full overflow-hidden border border-[#253340]">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${
+              (selectedIncident.riskScore ?? 55) >= 70
+                ? 'bg-[#F04438]'
+                : (selectedIncident.riskScore ?? 55) >= 40
+                ? 'bg-[#E8A93A]'
+                : 'bg-[#39B978]'
+            }`}
+            style={{ width: `${Math.min(100, Math.max(5, selectedIncident.riskScore ?? 55))}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-[10px] text-[#A7B4C1]">
+          <span>Severity: <strong className="text-white">{selectedIncident.severity}</strong></span>
+          <span>Buffer: <strong className="text-white">{selectedIncident.facilityDistanceKm <= 2.5 ? 'INSIDE 2.5km ZONE' : `OUTER SECTOR (${selectedIncident.facilityDistanceKm.toFixed(1)}km)`}</strong></span>
+        </div>
+      </div>
+
+      {/* Telemetry & Dual Confidence Rates Grid */}
       <div className="grid grid-cols-2 gap-2 font-mono text-xs">
         <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
           <span className="text-[9px] text-[#A7B4C1] block uppercase">FRP RADIATIVE POWER</span>
-          <span className="text-sm font-bold text-[#E8A93A]">{selectedIncident.frpMw} MW</span>
+          <span className="text-sm font-bold text-[#E8A93A]">{selectedIncident.frpMw.toFixed(1)} MW</span>
         </div>
         <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
           <span className="text-[9px] text-[#A7B4C1] block uppercase">BRIGHTNESS TEMP</span>
-          <span className="text-sm font-bold text-[#3DB7D9]">{selectedIncident.brightnessK} K</span>
+          <span className="text-sm font-bold text-[#3DB7D9]">{selectedIncident.brightnessK.toFixed(1)} K</span>
         </div>
         <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
-          <span className="text-[9px] text-[#A7B4C1] block uppercase">VIIRS CONFIDENCE</span>
-          <span className="text-sm font-bold text-[#39B978]">{selectedIncident.confidence}%</span>
+          <span className="text-[9px] text-[#A7B4C1] block uppercase">VIIRS SENSOR CONF</span>
+          <span className="text-sm font-bold text-[#39B978]">{selectedIncident.sensorConfidenceRate ?? selectedIncident.confidence}%</span>
         </div>
         <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
-          <span className="text-[9px] text-[#A7B4C1] block uppercase">FACILITY DISTANCE</span>
-          <span className="text-xs font-bold text-white">
-            {Math.round(selectedIncident.facilityDistanceKm * 1000)}m
+          <span className="text-[9px] text-[#A7B4C1] block uppercase">LIGHTGBM ML CONF</span>
+          <span className="text-sm font-bold text-[#00E5FF]">
+            {selectedIncident.mlConfidenceRate ?? Math.round((selectedIncident.predictedProbability ?? 0.85) * 100)}%
           </span>
         </div>
       </div>
 
-      {/* Nearest Facility Proximity Card */}
+      {/* Facility Proximity & Impacted Assets */}
       <div className="p-3 bg-[#0D151E] border border-[#253340] rounded-lg space-y-2 font-mono text-xs">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] text-[#3DB7D9] font-semibold uppercase tracking-wider flex items-center space-x-1">
-            <Factory className="w-3.5 h-3.5" />
-            <span>NEAREST FACILITY</span>
+          <span className="text-[10px] text-[#3DB7D9] font-semibold uppercase tracking-wider flex items-center space-x-1.5">
+            <Factory className="w-3.5 h-3.5 text-[#3DB7D9]" />
+            <span>NEAREST FACILITY / ASSET</span>
           </span>
-          <button
-            onClick={handleFacilityClick}
-            className="text-[10px] text-[#3DB7D9] hover:underline flex items-center space-x-0.5"
-          >
-            <span>View Facility</span>
-            <ChevronRight className="w-3 h-3" />
-          </button>
+          <span className="text-[9px] px-1.5 py-0.5 bg-[#081019] border border-[#253340] rounded text-[#A7B4C1]">
+            {selectedIncident.nearestFacilityType ?? 'Industrial Sector'}
+          </span>
         </div>
         <div className="font-semibold text-white font-sans text-sm">{selectedIncident.nearestFacilityName}</div>
-        <div className="flex justify-between text-[11px] text-[#A7B4C1] pt-1 border-t border-[#253340]">
-          <span>PROXIMITY DISTANCE</span>
-          <span className="text-[#E8A93A] font-bold">
-            {selectedIncident.facilityDistanceKm} km ({Math.round(selectedIncident.facilityDistanceKm * 1000)}m)
-          </span>
+        <div className="grid grid-cols-2 gap-2 text-[10px] text-[#A7B4C1] pt-1 border-t border-[#253340]">
+          <div>
+            <span className="block text-[9px] uppercase">PROXIMITY</span>
+            <span className="text-[#E8A93A] font-bold text-xs">
+              {selectedIncident.facilityDistanceKm < 1
+                ? `${Math.round(selectedIncident.facilityDistanceKm * 1000)} m`
+                : `${selectedIncident.facilityDistanceKm.toFixed(1)} km`}
+            </span>
+          </div>
+          <div>
+            <span className="block text-[9px] uppercase">CLUSTER SIZE</span>
+            <span className="text-white font-bold text-xs">
+              {selectedIncident.observationCount ?? 1} Detections
+            </span>
+          </div>
         </div>
       </div>
+
+      {/* 6-Class Probability Distribution / Persistence Badge */}
+      <ProbabilityDistributionCard incident={selectedIncident} />
 
       {/* Why This Was Flagged / Explainable Reasoning */}
       <ReasoningFlow
         steps={selectedIncident.reasoningSteps}
         classification={selectedIncident.classification}
-        confidence={selectedIncident.confidence}
+        confidence={selectedIncident.sensorConfidenceRate ?? selectedIncident.confidence}
       />
 
       {/* Recommended Action */}

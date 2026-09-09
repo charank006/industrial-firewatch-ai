@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Header } from './components/layout/Header';
 import { Navigation } from './components/layout/Navigation';
+import { FirmsLiveSyncModal } from './components/modals/FirmsLiveSyncModal';
 import { IntelligenceProvider } from './context/IntelligenceContext';
 import { AlertsPage } from './pages/Alerts/AlertsPage';
 import { AnalyticsPage } from './pages/Analytics/AnalyticsPage';
@@ -26,6 +27,7 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen bg-[#05080D] flex flex-col font-sans selection:bg-[#3DB7D9] selection:text-[#05080D] overflow-hidden">
       {!isLanding && <Header />}
       {!isLanding && <Navigation />}
+      <FirmsLiveSyncModal />
 
       <div className="flex-1 overflow-y-auto">
         <Routes>

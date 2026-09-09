@@ -34,7 +34,7 @@ export const ThermalHistoryPage: React.FC = () => {
         <MapLegend />
 
         {/* Floating Historical Pattern Card */}
-        <div className="absolute top-4 left-4 z-[1000] p-3 bg-[#07101B]/95 border border-[#203246] rounded-lg backdrop-blur-md w-72 space-y-2 font-mono text-xs shadow-2xl">
+        <div className="absolute top-4 left-4 z-10 p-3 bg-[#07101B]/95 border border-[#203246] rounded-lg backdrop-blur-md w-72 space-y-2 font-mono text-xs shadow-2xl">
           <div className="flex items-center justify-between border-b border-[#203246] pb-1.5">
             <span className="font-semibold text-[#16A9D9]">HISTORICAL METRICS</span>
             <span className="text-[10px] text-slate-500">180-DAY LOOKBACK</span>

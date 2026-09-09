@@ -1,11 +1,20 @@
 export type SeverityLevel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 export type EventClassification =
+  | 'Persistent Thermal Source'
   | 'Industrial Fire'
   | 'Routine Flare'
+  | 'Gas/Oil Flare'
   | 'Forest Fire'
   | 'Agricultural Burning'
-  | 'Unknown Anomaly';
+  | 'Urban/Other'
+  | 'Unknown Anomaly'
+  | 'industrial_fire'
+  | 'gas_oil_flare'
+  | 'forest_fire'
+  | 'agricultural_burning'
+  | 'urban_other'
+  | 'unknown';
 
 export type FacilityType =
   | 'Refinery'
@@ -48,7 +57,22 @@ export interface ThermalHotspot {
   suggestedAction: string;
   locationName: string;
   isNew: boolean;
+  persistenceStatus?: 'PERSISTENT' | 'NON_PERSISTENT';
+  persistenceActiveDays?: number;
+  predictedProbability?: number;
+  classProbabilities?: Record<string, number>;
+  modelVersion?: string;
+  topFeatures?: Array<{ feature: string; value: number; model_importance_gain: number }>;
+  riskScore?: number;
+  nearestFacilityType?: string;
+  sensorConfidenceRate?: number;
+  mlConfidenceRate?: number;
+  observationCount?: number;
+  nearbyEventsCount?: number;
+  baselineFrp?: number;
+  frpTimeline?: Array<{ time: string; frp: number; baseline: number }>;
 }
+
 
 export interface IndustrialFacility {
   id: string;
@@ -108,6 +132,35 @@ export interface SituationMetrics {
   mediumPriorityCount: number;
   lowPriorityCount: number;
   avgFrp: number;
-  eventMix: Record<EventClassification, number>;
+  eventMix: Partial<Record<EventClassification, number>>;
   latestHotspot?: ThermalHotspot;
 }
+
+export interface FIRMSSyncStatus {
+  is_configured: boolean;
+  map_key_masked: string;
+  supported_sensors: string[];
+  predefined_areas: string[];
+  total_events_in_db: number;
+  total_observations_in_db: number;
+  scheduler?: {
+    running: boolean;
+    poll_interval_seconds: number;
+    area: string;
+    sources: string[];
+    days_lookback: number;
+    is_key_configured: boolean;
+    last_sync_time: string | null;
+    last_sync_count: number;
+    last_error: string | null;
+  };
+}
+
+export interface FIRMSSyncOptions {
+  map_key?: string;
+  sources?: string[];
+  area?: string;
+  days?: number;
+  clear_existing?: boolean;
+}
+

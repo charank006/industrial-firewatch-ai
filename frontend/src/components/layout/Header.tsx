@@ -1,9 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Globe, Radar, Search } from 'lucide-react';
+import { Bell, Globe, Radar, Search, Satellite, RefreshCw } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 
 export const Header: React.FC = () => {
-  const { filters, setFilters, alerts } = useIntelligence();
+  const {
+    filters,
+    setFilters,
+    alerts,
+    firmsStatus,
+    isSyncingFirms,
+    setIsFirmsModalOpen,
+  } = useIntelligence();
   const [timeString, setTimeString] = useState<string>('');
   const unresolvedCount = alerts.filter((a) => a.isUnresolved).length;
 
@@ -36,18 +43,28 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Live Monitoring Badge & Operational Tag */}
+      {/* Live NASA Satellite & Monitoring Badges */}
       <div className="hidden md:flex items-center space-x-3 font-mono text-xs">
+        <button
+          onClick={() => setIsFirmsModalOpen(true)}
+          title="Click to open NASA FIRMS Satellite Telemetry Ingestion Hub"
+          className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-orange-500/15 to-amber-500/10 border border-orange-500/30 hover:border-orange-500/60 rounded-md text-orange-400 hover:text-orange-300 transition-all cursor-pointer shadow-sm group"
+        >
+          {isSyncingFirms ? (
+            <RefreshCw className="w-3.5 h-3.5 text-orange-400 animate-spin" />
+          ) : (
+            <Satellite className="w-3.5 h-3.5 text-orange-400 group-hover:scale-110 transition-transform" />
+          )}
+          <span className="text-[10.5px] font-bold tracking-wider uppercase">
+            NASA FIRMS LIVE {firmsStatus?.total_events_in_db ? `(${firmsStatus.total_events_in_db})` : ''}
+          </span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        </button>
+
         <div className="flex items-center space-x-2 px-3 py-1 bg-[#0A121E] border border-[#1E2C3B] rounded-md">
           <span className="w-2 h-2 rounded-full bg-[#39B978] shadow-[0_0_8px_#39B978]" />
           <span className="text-[#39B978] font-bold text-[10.5px] tracking-wider uppercase">
-            SYSTEM OPERATIONAL
-          </span>
-        </div>
-
-        <div className="flex items-center space-x-2 px-3 py-1 bg-[#0A121E] border border-[#1E2C3B] rounded-md">
-          <span className="text-[10.5px] text-[#E8A93A] font-bold tracking-wider uppercase">
-            DEMO DATA &bull; VIIRS 375M
+            VIIRS 375M &bull; ACTIVE
           </span>
         </div>
       </div>
@@ -61,6 +78,7 @@ export const Header: React.FC = () => {
             onChange={(e) => setFilters((prev) => ({ ...prev, region: e.target.value }))}
             className="pl-8 pr-3 py-1 bg-[#0A121E] border border-[#1E2C3B] text-slate-200 text-xs rounded-md focus:outline-none focus:border-[#3DB7D9] transition"
           >
+            <option value="ALL">All India (NASA FIRMS Live)</option>
             <option value="Gujarat Industrial Corridor">Gujarat Industrial Corridor (IN)</option>
             <option value="Permian Petrochemical Zone">Permian Petrochemical Basin (US)</option>
             <option value="Rhine Industrial Belt">Rhine Industrial Belt (EU)</option>
