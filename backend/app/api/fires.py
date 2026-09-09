@@ -1080,7 +1080,7 @@ async def get_ml_schema() -> Dict[str, Any]:
 
 @router.post("/api/firms/sync")
 @router.get("/api/firms/sync")
-async def sync_live_firms(day_range: int = Query(3, ge=1, le=10)) -> Dict[str, Any]:
+async def sync_live_firms(day_range: int = Query(1, ge=1, le=10)) -> Dict[str, Any]:
     """Trigger real-time satellite data fetch from NASA FIRMS API across India,
     evaluate 7-day persistence, classify non-persistent detections with LightGBM,
     and synchronize live points to the map.

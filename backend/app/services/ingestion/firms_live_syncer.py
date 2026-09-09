@@ -149,7 +149,7 @@ def reverse_geocode_india_region(lat: float, lon: float) -> Tuple[str, str, str]
 async def fetch_live_nasa_firms_india(
     map_key: str,
     bbox: str = "68.0,6.5,97.5,37.5",
-    day_range: int = 3,
+    day_range: int = 1,
     sources: Optional[List[str]] = None,
 ) -> List[FireDetection]:
     """Fetch live real-world thermal anomaly detections across India from NASA FIRMS API."""
@@ -435,7 +435,7 @@ export const MOCK_HOTSPOTS: ThermalHotspot[] = [
     logger.info("Successfully exported %d live Indian thermal points to %s", len(hotspots), target_file)
 
 
-async def run_live_pipeline(day_range: int = 3, train_model: bool = True) -> Dict[str, Any]:
+async def run_live_pipeline(day_range: int = 1, train_model: bool = True) -> Dict[str, Any]:
     """Complete end-to-end execution of live FIRMS ingestion, training, and map sync."""
     map_key = settings.NASA_FIRMS_MAP_KEY or "b3cc086d1ec2bfe06e27631b3858c61f"
     bbox = settings.FIRMS_AOI_BBOX or "68.0,6.5,97.5,37.5"

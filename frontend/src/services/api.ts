@@ -216,7 +216,7 @@ export interface SyncFirmsResponse {
   updated_at: string;
 }
 
-export function syncLiveFirms(dayRange: number = 3) {
+export function syncLiveFirms(dayRange: number = 1) {
   return request<SyncFirmsResponse>(`/api/firms/sync?day_range=${dayRange}`, {
     method: 'POST',
   });

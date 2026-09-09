@@ -120,7 +120,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
     setSyncNotification('🛰️ Connecting to NASA FIRMS satellite constellation (VIIRS NOAA-20/21, Suomi-NPP, MODIS)...');
     try {
       try {
-        const syncRes = await syncLiveFirms(3);
+        const syncRes = await syncLiveFirms(1);
         if (syncRes && syncRes.total_detections) {
           console.log('NASA FIRMS Live Sync response:', syncRes);
         }
@@ -218,6 +218,13 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (filters.severity !== 'ALL' && h.severity !== filters.severity) return false;
       if (h.frpMw < filters.minFRP) return false;
       if (filters.landCover !== 'ALL' && h.landCover !== filters.landCover) return false;
+      if (filters.region && filters.region !== 'All India (Pan-India)' && filters.region !== 'Global') {
+        const reg = filters.region.toLowerCase();
+        if (reg.includes('telangana') && !h.locationName.toLowerCase().includes('telangana')) return false;
+        if (reg.includes('gujarat') && !h.locationName.toLowerCase().includes('gujarat')) return false;
+        if (reg.includes('punjab') && !(h.locationName.toLowerCase().includes('punjab') || h.locationName.toLowerCase().includes('haryana'))) return false;
+        if (reg.includes('forest') && !(h.locationName.toLowerCase().includes('odisha') || h.locationName.toLowerCase().includes('madhya') || h.locationName.toLowerCase().includes('chhattisgarh'))) return false;
+      }
       if (filters.searchKeyword.trim() !== '') {
         const kw = filters.searchKeyword.toLowerCase();
         const matchName = h.id.toLowerCase().includes(kw) ||
