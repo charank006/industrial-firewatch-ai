@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { CloudDrizzle, Cpu, Factory, Flame, Globe2, LayoutDashboard, Wind } from 'lucide-react';
+import { Cpu, Factory, Flame, Globe2, LayoutDashboard } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 
 const CORE_WORKSTATIONS = [
@@ -8,9 +8,7 @@ const CORE_WORKSTATIONS = [
   { path: '/command-center', label: 'Operations Room', icon: LayoutDashboard, badge: 'LIVE' },
   { path: '/incidents', label: 'Incidents Registry', icon: Flame, badge: 'ACTIVE' },
   { path: '/facility-watch', label: 'Facility Monitor', icon: Factory, badge: 'ASSETS' },
-  { path: '/weather-analysis', label: 'Weather Baseline', icon: CloudDrizzle, badge: '6-DAY' },
-  { path: '/risk-impact', label: 'Risk & Impact', icon: Wind, badge: 'PLUME' },
-  { path: '/system-status', label: 'System Status & Methodology', icon: Cpu, badge: 'READY' },
+  { path: '/system-status', label: 'System Health & Methodology', icon: Cpu, badge: 'READY' },
 ];
 
 export const Navigation: React.FC = () => {

@@ -152,11 +152,8 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    const initialCenter: [number, number] = selectedIncidentRef.current
-      ? [selectedIncidentRef.current.lng, selectedIncidentRef.current.lat]
-      : [78.9629, 20.5937];
-
-    const initialZoom = selectedIncidentRef.current ? 9.5 : 5;
+    const initialCenter: [number, number] = [78.9629, 20.5937];
+    const initialZoom = 4.8;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
