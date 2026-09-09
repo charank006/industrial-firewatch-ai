@@ -83,22 +83,21 @@ export interface ThermalHotspot {
 export interface IndustrialFacility {
   id: string;
   name: string;
-  /** Free text from OSM tags, e.g. "Oil / Gas", "Quarry" — not a closed set. */
   type: string;
   lat: number;
   lng: number;
   location: string;
   status: FacilityStatus;
-  /** False when OSM has the parcel but no name for it. */
-  named: boolean;
-  /** Closest approach to any fire that saw this site. */
-  nearestDistanceM: number | null;
-  /** Highest FRP among the fires near this site. */
+  baselineFRP?: number;
   currentFRP: number;
   lastDetected: string;
-  /** Fires detected within 1 km of this site. */
-  eventCount: number;
-  fireEventIds: string[];
+  eventCount?: number;
+  fireEventIds?: string[];
+  totalEventsPast90Days?: number;
+  named?: boolean;
+  nearestDistanceM?: number | null;
+  emergencyContact?: string;
+  riskBufferRadiusKm?: number;
 }
 
 export interface AlertItem {

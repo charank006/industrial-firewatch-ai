@@ -1,113 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { AlertOctagon, CheckCircle2, Cpu, Database, Flame, Layers, Radar, ShieldAlert } from 'lucide-react';
-import { DATA_SOURCE, fetchSystemStatus } from '../../services/api';
-
-interface Probe {
-  ok: boolean;
-  detail: string;
-  latency_ms: number | null;
-  checked_at: string;
-}
-
-/**
- * Live subsystem probes.
- *
- * This page previously asserted "CONNECTED (SRID 4326)" and "ST_DWithin
- * Spatial Query" as static JSX regardless of whether anything was reachable.
- * Each card below now reports the result of an actual check, and the static
- * cards are kept beneath as the demo-mode view.
- */
-const LiveProbeGrid: React.FC = () => {
-  const [probes, setProbes] = useState<Record<string, Probe> | null>(null);
-  const [thresholds, setThresholds] = useState<Record<string, number> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchSystemStatus()
-      .then((body) => {
-        if (cancelled) return;
-        setProbes((body.probes ?? null) as Record<string, Probe> | null);
-        setThresholds((body.thresholds ?? null) as Record<string, number> | null);
-      })
-      .catch((cause) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (error) {
-    return (
-      <div className="p-3 bg-[#F04438]/10 border border-[#F04438]/30 rounded-lg text-xs font-mono text-[#F04438]">
-        Backend unreachable: {error}
-      </div>
-    );
-  }
-  if (!probes) {
-    return (
-      <div className="p-3 bg-[#081019] border border-[#253340] rounded-lg text-xs font-mono text-[#A7B4C1]">
-        Probing subsystems…
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono text-xs">
-        {Object.entries(probes).map(([name, probe]) => (
-          <div key={name} className="p-3 bg-[#081019] border border-[#253340] rounded-lg space-y-1">
-            <span className="text-[10px] text-[#A7B4C1] block uppercase tracking-wider">
-              {name.replace(/_/g, ' ')}
-            </span>
-            <span
-              className={`text-sm font-bold flex items-center space-x-1 ${
-                probe.ok ? 'text-[#39B978]' : 'text-[#E8A93A]'
-              }`}
-            >
-              {probe.ok ? (
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-              ) : (
-                <AlertOctagon className="w-4 h-4 shrink-0" />
-              )}
-              <span>{probe.ok ? 'OPERATIONAL' : 'UNAVAILABLE'}</span>
-            </span>
-            <span className="text-[10px] text-[#A7B4C1] block pt-1 leading-relaxed break-words">
-              {probe.detail}
-            </span>
-            {probe.latency_ms !== null && (
-              <span className="text-[10px] text-[#7C8B9A] block">
-                {probe.latency_ms.toFixed(0)} ms
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {thresholds && (
-        <div className="p-3 bg-[#0A121E] border border-[#253340] rounded-lg font-mono text-[10px] space-y-1.5">
-          <span className="text-[#3DB7D9] uppercase tracking-wider">
-            Active pipeline thresholds
-          </span>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1">
-            {Object.entries(thresholds).map(([key, value]) => (
-              <div key={key} className="flex justify-between">
-                <span className="text-[#A7B4C1]">{key.replace(/_/g, ' ')}</span>
-                <span className="text-slate-200">{value}</span>
-              </div>
-            ))}
-          </div>
-          {/* Rendered from the API rather than written as prose, so the
-              documented thresholds cannot drift from the engine's actual ones. */}
-          <span className="block text-[#7C8B9A] pt-1">
-            Values read live from /api/system/status — not documentation.
-          </span>
-        </div>
-      )}
-    </div>
-  );
-};
+import React from 'react';
+import { CheckCircle2, Cpu, Database, Flame, Layers, Radar, ShieldAlert } from 'lucide-react';
 
 export const SystemStatusPage: React.FC = () => {
   return (
@@ -131,8 +23,6 @@ export const SystemStatusPage: React.FC = () => {
           <span>FRONTEND & FASTAPI READY</span>
         </div>
       </div>
-
-      {DATA_SOURCE === 'api' && <LiveProbeGrid />}
 
       {/* Service Health Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 font-mono text-xs">

@@ -11,50 +11,36 @@ import {
 import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
-import { ActiveFireBar } from '../../components/intelligence/ActiveFireBar';
-import { facilityDistance } from '../../components/intelligence/formatters';
 
 export const IncidentAnalysisPage: React.FC = () => {
   const { incidentId } = useParams<{ incidentId: string }>();
   const navigate = useNavigate();
-  const { hotspots, selectFacilityById, analysis, isLoading } = useIntelligence();
+  const { hotspots, selectFacilityById, analysis } = useIntelligence();
 
   /**
-   * Nearest mapped facility of a kind, from the OSM enrichment. The page used
-   * to name Gujarat contacts regardless of where the fire actually was.
+   * Nearest mapped facility of a kind, from the OSM enrichment. This page
+   * named Gujarat contacts regardless of where the fire actually was.
    */
   const nearestOfKind = (kind: string): string | null => {
     const match = (analysis?.surroundings?.emergencyFacilities ?? []).find((f) => f.kind === kind);
     if (!match) return null;
-    return match.distanceM === null
-      ? match.name
-      : `${match.name} — ${Math.round(match.distanceM)}m`;
+    return match.distanceM === null ? match.name : `${match.name} — ${Math.round(match.distanceM)}m`;
   };
 
   const incident = hotspots.find((h) => h.id === incidentId) || hotspots[0];
   const [customRadius, setCustomRadius] = useState<number>(1000);
 
   const handleFacilityClick = () => {
-    if (!incident?.nearestFacilityId) return;
     selectFacilityById(incident.nearestFacilityId);
     navigate(`/facility-watch?facilityId=${incident.nearestFacilityId}`);
   };
 
   const handleAuthorizeAlertClick = () => {
-    if (incident) navigate(`/alerts?incidentId=${incident.id}&radius=${customRadius}`);
+    navigate(`/alerts?incidentId=${incident.id}&radius=${customRadius}`);
   };
-
-  if (!incident) {
-    return (
-      <div className="min-h-screen bg-[#05080D] p-6 font-mono text-xs text-[#A7B4C1]">
-        {isLoading ? 'Loading detections…' : `No detection ${incidentId ?? ''} in the current view.`}
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#05080D] p-4 space-y-4 font-sans text-[#F1F4F6]">
-      <ActiveFireBar section="Full analysis" />
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between border-b border-[#253340] pb-3 font-mono text-xs">
         <button
@@ -141,7 +127,7 @@ export const IncidentAnalysisPage: React.FC = () => {
               <div className="flex justify-between text-[10px] text-[#A7B4C1]">
                 <span>DISTANCE:</span>
                 <span className="text-[#E8A93A] font-bold">
-                  {facilityDistance(incident.nearestFacilityId, incident.facilityDistanceKm)}
+                  {Math.round(incident.facilityDistanceKm * 1000)}m ({incident.facilityDistanceKm} km)
                 </span>
               </div>
             </div>
@@ -217,7 +203,7 @@ export const IncidentAnalysisPage: React.FC = () => {
                 </div>
                 <p className="text-[#A7B4C1] text-[10px]">Plant Safety Officers & Storage Tank Managers</p>
                 <div className="text-white font-semibold text-[10px] pt-1">
-                  {incident.nearestFacilityId ? incident.nearestFacilityName : 'No registry facility within 50 km'}
+                  {incident.nearestFacilityId ? incident.nearestFacilityName : 'No industrial site within 1 km'}
                 </div>
               </div>
 

@@ -1,469 +1,1604 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Globe from 'globe.gl';
-import { X, ShieldAlert, BookOpen, ArrowRight } from 'lucide-react';
-import { getEarthNightTexture } from '../../utils/earthTexture';
-import { classColor } from '../../utils/classColors';
-import { useIntelligence } from '../../context/IntelligenceContext';
-import { VERDICT_LABEL } from '../../components/intelligence/formatters';
-import type { ThermalHotspot } from '../../types';
+import * as THREE from 'three';
+import { Globe2 } from 'lucide-react';
 
-export const LandingPage: React.FC = () => {
+import { getEarthNightTexture } from '../../utils/earthTexture';
+import { HISTORICAL_EVENTS } from '../../data/historicalEvents';
+import { LANDING_SIGNALS } from '../../data/landingSignals';
+import {
+  SatelliteDossierModal,
+  SATELLITE_DOSSIERS,
+  type SatelliteDossier
+} from '../../components/modals/SatelliteDossierModal';
+
+// --- BEAT 3: CONTEXT ENGINE LAYERS ---
+type ContextLayer = 'thermal' | 'infrastructure' | 'history';
+
+// --- BEAT 4: THE 5 PRACTICAL SIGNATURES ---
+interface SignatureItem {
+  id: string;
+  name: string;
+  category: string;
+  verdict: 'ROUTINE OPERATION' | 'CRITICAL THREAT' | 'MONITORED BURN';
+  verdictColor: string;
+  summary: string;
+  howItWorks: string;
+  sampleLocation: string;
+  temp: string;
+  power: string;
+  area: string;
+  heatColors: string[];
+}
+
+const SIGNATURES: SignatureItem[] = [
+  {
+    id: 'flare',
+    name: 'Refinery Flare Stack',
+    category: 'Petrochemical Facility',
+    verdict: 'ROUTINE OPERATION',
+    verdictColor: '#38bdf8', // Cyan
+    sampleLocation: 'Deer Park Refinery, Texas, USA',
+    temp: '1,120°C',
+    power: '420 MW',
+    area: '25 m² (Point Source)',
+    heatColors: ['#38bdf8', '#0284c7', '#0369a1'],
+    summary: 'Controlled safety relief burn inside registered industrial plant perimeter.',
+    howItWorks: 'GeoFlare matches the coordinates against global refinery polygons and verifies active heat signatures on >140 of the last 180 days.',
+  },
+  {
+    id: 'wildfire',
+    name: 'Uncontained Wildfire',
+    category: 'Vegetation & Forest Boundary',
+    verdict: 'CRITICAL THREAT',
+    verdictColor: '#ef4444', // Red
+    sampleLocation: 'Shasta-Trinity National Forest, CA',
+    temp: '860°C',
+    power: '1,840 MW',
+    area: '14.2 km² (Rapid Spread)',
+    heatColors: ['#f87171', '#dc2626', '#991b1b'],
+    summary: 'Rapidly spreading perimeter crossing wildland-urban interface (WUI).',
+    howItWorks: 'Zero historical thermal activity recorded at these coordinates. Spatial clustering indicates non-stationary, directional advance.',
+  },
+  {
+    id: 'facility-fire',
+    name: 'Industrial Structure Fire',
+    category: 'Storage & Warehouse Asset',
+    verdict: 'CRITICAL THREAT',
+    verdictColor: '#f97316', // Orange
+    sampleLocation: 'Port of Antwerp Chemical Terminal',
+    temp: '1,320°C',
+    power: '950 MW',
+    area: '350 m² (Non-Flare Zone)',
+    heatColors: ['#fb923c', '#ea580c', '#9a3412'],
+    summary: 'High-intensity uncontrolled thermal event inside an active industrial facility.',
+    howItWorks: 'Thermal anomaly detected within industrial zone boundaries, but physically offset from permitted flare stack coordinates.',
+  },
+  {
+    id: 'agriculture',
+    name: 'Agricultural Burn',
+    category: 'Farmland Crop Management',
+    verdict: 'MONITORED BURN',
+    verdictColor: '#10b981', // Emerald
+    sampleLocation: 'Sacramento Valley Farmland, CA',
+    temp: '510°C',
+    power: '120 MW',
+    area: '1.8 km² (Low Intensity)',
+    heatColors: ['#34d399', '#059669', '#065f46'],
+    summary: 'Low-temperature crop residue clearing on recognized agricultural parcel.',
+    howItWorks: 'Heat intensity remains low-grade (<600°C) and conforms precisely to seasonal parcel boundaries without expanding into surrounding timber.',
+  },
+  {
+    id: 'smelter',
+    name: 'Mining & Blast Furnace',
+    category: 'Metals & Smelting Infrastructure',
+    verdict: 'ROUTINE OPERATION',
+    verdictColor: '#a855f7', // Purple
+    sampleLocation: 'Pilbara Iron Ore Operation, Australia',
+    temp: '1,450°C',
+    power: '1,280 MW',
+    area: '80 m² (Localized Pit)',
+    heatColors: ['#c084fc', '#9333ea', '#6b21a8'],
+    summary: 'Continuous extreme localized heat generated during smelting cycles.',
+    howItWorks: 'Stationary point-source thermal signature confined to heavy mineral excavation and slag-cooling pits.',
+  },
+];
+
+// --- ANTIMETAL SIGNATURE ANIMATION: ROLLING NUMBER TICKER ---
+function AnimatedNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(value);
+  useEffect(() => {
+    let start = display;
+    const diff = value - start;
+    if (diff === 0) return;
+    const step = diff / 12;
+    const interval = setInterval(() => {
+      start += step;
+      if ((step > 0 && start >= value) || (step < 0 && start <= value)) {
+        setDisplay(value);
+        clearInterval(interval);
+      } else {
+        setDisplay(Math.round(start * 10) / 10);
+      }
+    }, 25);
+    return () => clearInterval(interval);
+  }, [value]);
+  return <span>{display}%</span>;
+}
+
+export default function GeoFlareLanding() {
   const navigate = useNavigate();
-  const globeElRef = useRef<HTMLDivElement>(null);
+
+  // Beat 2: Spatial Dilemma Dynamic Hover Interrogation State
+  const [hoveredGroundIndex, setHoveredGroundIndex] = useState<number | null>(null);
+
+  // Beat 3: Context Interactive Demo State
+  const [activeLayers, setActiveLayers] = useState<ContextLayer[]>(['thermal']);
+  
+  // Beat 4: Active Classification Selection
+  const [selectedSig, setSelectedSig] = useState<SignatureItem>(SIGNATURES[0]);
+
+  // Satellite Dossier Modal State
+  const [selectedSatellite, setSelectedSatellite] = useState<SatelliteDossier | null>(null);
+
+  // Three.js Globe Reference
+  const globeElRef = useRef<HTMLDivElement | null>(null);
   const globeInstanceRef = useRef<any>(null);
 
-  // Selected Incident State & Ref to prevent useEffect re-triggering
-  // `hotspots`, not `filteredHotspots`: the globe is an overview, and
-  // silently inheriting the dashboard's 24h/severity filters was the main
-  // reason its dot count did not match NASA FIRMS' own map.
-  const { hotspots, isLoading, error } = useIntelligence();
-
-  const [selectedIncident, setSelectedIncident] = useState<ThermalHotspot | null>(null);
-
-  // The globe is initialised once, so its marker callback closes over the
-  // FIRST render's data - empty, because fires arrive asynchronously. Reading
-  // through a ref (and pushing new data in a separate effect) is what stops
-  // the globe from staying permanently blank.
-  const hotspotsRef = useRef<ThermalHotspot[]>(hotspots);
-  hotspotsRef.current = hotspots;
-
-  // Track marker DOM element refs for visual state updates without globe re-renders
-  const markerElementsRef = useRef<Map<string, { core: HTMLDivElement; halo: HTMLDivElement }>>(new Map());
-  const hasFramedRef = useRef(false);
-
-  // FIRMS plots one dot per satellite pixel; this plots one per clustered
-  // event. Showing both numbers is what lets a viewer reconcile the two.
-  const pixelCount = hotspots.reduce((total, h) => total + h.detectionCount, 0);
-
-  // Telemetry Clock
-  const [timeStr, setTimeStr] = useState<string>('');
-
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const year = now.getFullYear();
-      let hours = now.getHours();
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      hours = hours % 12 || 12;
-      const formattedHours = String(hours).padStart(2, '0');
-
-      setTimeStr(`${month}/${day}/${year} ${formattedHours}:${minutes}:${seconds} ${ampm}`);
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Initialize Globe.GL Earth ONCE on mount
+  // 3D WebGL Three.js Globe Initialization + Minimal Thermal Heatmap + Infrared Scan Beam
   useEffect(() => {
     if (!globeElRef.current) return;
 
-    const width = globeElRef.current.clientWidth || window.innerWidth;
-    const height = globeElRef.current.clientHeight || window.innerHeight;
-
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const nasaSatTexture = 'https://unpkg.com/three-globe/example/img/earth-night.jpg';
     const fallbackTexture = getEarthNightTexture();
 
-    const world = (Globe as any)()(globeElRef.current)
-      .width(width)
-      .height(height)
-      .globeImageUrl(nasaSatTexture)
-      .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
-      .backgroundColor('#000000')
-      .atmosphereColor('#0088ff')
-      .atmosphereAltitude(0.24)
-      // Seeded empty and filled by the effect below: fires arrive from the
-      // API after this runs.
-      .htmlElementsData([] as ThermalHotspot[])
-      .htmlElement((d: ThermalHotspot) => {
-        const colour = classColor(d.classification);
-        const container = document.createElement('div');
-        container.className = 'relative flex items-center justify-center cursor-pointer';
-        container.style.transform = 'translate(-50%, -50%)';
-        container.style.pointerEvents = 'auto';
-        container.style.zIndex = '100';
+    const globePoints = [
+      ...HISTORICAL_EVENTS.slice(0, 15).map((ev) => ({
+        lat: ev.lat,
+        lng: ev.lng,
+        name: ev.name,
+        color: ev.markerType === 'confirmed_critical' ? '#EF4444' : '#F97316',
+        frp: ev.shortSummary,
+      })),
+      ...LANDING_SIGNALS.map((sig) => ({
+        lat: sig.lat,
+        lng: sig.lng,
+        name: sig.locationName,
+        color: sig.severity === 'CRITICAL' ? '#EF4444' : '#38BDF8',
+        frp: `${sig.frpMw} MW`,
+      }))
+    ];
 
-        // Outer glow. Kept deliberately tight and faint: at 20px across 51
-        // detections a few kilometres apart, the halos overlapped into a
-        // single orange smear and the individual points could not be read.
-        const halo = document.createElement('div');
-        halo.style.position = 'absolute';
-        halo.style.borderRadius = '50%';
-        halo.className = 'animate-historical-breath';
-        halo.style.width = '8px';
-        halo.style.height = '8px';
-        halo.style.backgroundColor = `${colour}26`;
+    // Minimal Thermal Heatmap Surface Rings on Earth
+    const surfaceHeatRings = [
+      { lat: 21.17, lng: 72.83, maxR: 4, propagationSpeed: 1, repeatPeriod: 1400, color: '#ef4444' }, // Gujarat Refinery
+      { lat: 29.74, lng: -95.18, maxR: 5, propagationSpeed: 1.2, repeatPeriod: 1600, color: '#38bdf8' }, // Texas Refinery Flare
+      { lat: 40.71, lng: -121.52, maxR: 6, propagationSpeed: 1.5, repeatPeriod: 1800, color: '#ef4444' }, // Wildfire Anomaly
+      { lat: 51.95, lng: 4.14, maxR: 3.5, propagationSpeed: 0.9, repeatPeriod: 1300, color: '#f97316' }, // Rotterdam Port
+      { lat: -22.34, lng: 118.53, maxR: 4.5, propagationSpeed: 1.1, repeatPeriod: 1500, color: '#a855f7' }, // Pilbara Smelter
+      { lat: 31.84, lng: -102.35, maxR: 4.2, propagationSpeed: 1.0, repeatPeriod: 1700, color: '#f59e0b' } // Permian Basin
+    ];
 
-        // Inner Marker Core, sized by radiative power.
-        const core = document.createElement('div');
-        // Smaller than the historical-archive markers this replaced: these
-        // are individual detections, often only a few hundred metres apart,
-        // and at 7-16px they merged into one blob over the AOI.
-        const size = Math.max(3.5, Math.min(8, 3.5 + Math.sqrt(d.frpMw) / 2));
-        core.style.borderRadius = '50%';
-        core.style.transition = 'all 0.2s ease';
-        core.style.width = `${size}px`;
-        core.style.height = `${size}px`;
-        core.style.backgroundColor = colour;
-        core.style.boxShadow = `0 0 3px ${colour}CC`;
-        core.style.outline = '0.5px solid rgba(0,0,0,0.55)';
-        // A detection we believe is probably not a fire is drawn hollow, so
-        // the globe never shows a false alarm as an equal to a real fire.
-        if (d.validityVerdict === 'LIKELY_FALSE_ALARM') {
-          core.style.backgroundColor = 'transparent';
-          core.style.border = `1.5px dashed ${colour}`;
-          core.style.boxShadow = 'none';
-        }
+    try {
+      const container = globeElRef.current;
+      const width = container.clientWidth || 380;
+      const height = container.clientHeight || 380;
 
-        container.appendChild(halo);
-        container.appendChild(core);
+      const world = (Globe as any)()(container)
+        .width(width)
+        .height(height)
+        .globeImageUrl(nasaSatTexture)
+        .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+        .backgroundColor('rgba(0,0,0,0)')
+        .atmosphereColor('#38bdf8')
+        .atmosphereAltitude(0.24)
+        .ringsData(surfaceHeatRings)
+        .ringColor((d: any) => d.color)
+        .ringMaxRadius((d: any) => d.maxR)
+        .ringPropagationSpeed((d: any) => d.propagationSpeed)
+        .ringRepeatPeriod((d: any) => d.repeatPeriod)
+        .htmlElementsData(globePoints)
+        .htmlElement((d: any) => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'group relative pointer-events-auto cursor-pointer';
+          wrapper.style.transform = 'translate(-50%, -50%)';
 
-        markerElementsRef.current.set(d.id, { core, halo });
+          const beacon = document.createElement('div');
+          beacon.style.width = '8px';
+          beacon.style.height = '8px';
+          beacon.style.borderRadius = '50%';
+          beacon.style.backgroundColor = d.color;
+          beacon.style.boxShadow = `0 0 10px ${d.color}`;
+          wrapper.appendChild(beacon);
 
-        const tooltip = document.createElement('div');
-        tooltip.style.position = 'absolute';
-        tooltip.style.bottom = '22px';
-        tooltip.style.left = '50%';
-        tooltip.style.transform = 'translateX(-50%)';
-        tooltip.style.pointerEvents = 'none';
-        tooltip.style.opacity = '0';
-        tooltip.style.visibility = 'hidden';
-        tooltip.style.transition = 'opacity 0.2s ease, visibility 0.2s ease';
-        tooltip.style.zIndex = '999';
-        tooltip.style.width = 'max-content';
-        tooltip.style.maxWidth = '220px';
-        tooltip.style.backgroundColor = 'rgba(8, 16, 25, 0.96)';
-        tooltip.style.border = '1px solid rgba(255, 255, 255, 0.25)';
-        tooltip.style.borderRadius = '6px';
-        tooltip.style.padding = '8px 10px';
-        tooltip.style.fontFamily = 'monospace';
-        tooltip.style.fontSize = '10px';
-        tooltip.style.color = '#FFFFFF';
-        tooltip.style.boxShadow = '0 10px 25px rgba(0,0,0,0.8)';
-        tooltip.style.backdropFilter = 'blur(8px)';
-
-        const verdict = d.validityVerdict ? VERDICT_LABEL[d.validityVerdict] : 'NOT ASSESSED';
-        tooltip.innerHTML = `
-          <div style="font-weight: 700; color: #FFFFFF; font-size: 10.5px; letter-spacing: 0.04em;">${d.id}</div>
-          <div style="color: #94A3B8; font-size: 9px; margin-top: 2px;">${d.locationName} &bull; ${d.frpMw} MW</div>
-          <div style="color: ${colour}; font-size: 9px; margin-top: 3px;">${d.classification.toUpperCase()}</div>
-          <div style="color: #CBD5E1; font-size: 8.5px; margin-top: 1px;">VALIDITY: ${verdict}</div>
-        `;
-        container.appendChild(tooltip);
-
-        container.addEventListener('mouseenter', () => {
-          tooltip.style.opacity = '1';
-          tooltip.style.visibility = 'visible';
-        });
-
-        container.addEventListener('mouseleave', () => {
-          tooltip.style.opacity = '0';
-          tooltip.style.visibility = 'hidden';
-        });
-
-        const handleClick = (e: MouseEvent | TouchEvent) => {
-          e.stopPropagation();
-          e.preventDefault();
-
-          if (world.controls()) {
-            world.controls().autoRotate = false;
+          if (!prefersReducedMotion) {
+            const ring = document.createElement('div');
+            ring.style.position = 'absolute';
+            ring.style.top = '50%';
+            ring.style.left = '50%';
+            ring.style.transform = 'translate(-50%, -50%)';
+            ring.style.width = '16px';
+            ring.style.height = '16px';
+            ring.style.borderRadius = '50%';
+            ring.style.border = `1.5px solid ${d.color}`;
+            ring.className = 'animate-ping opacity-75';
+            wrapper.appendChild(ring);
           }
 
-          setSelectedIncident(d);
-          world.pointOfView({ lat: d.lat, lng: d.lng, altitude: 0.45 }, 1200);
+          // Tooltip Hover
+          const tooltip = document.createElement('div');
+          tooltip.className = 'hidden group-hover:block absolute left-3 top-1/2 -translate-y-1/2 bg-[#040812]/95 border border-cyan-500/40 text-[10px] font-mono text-white px-2 py-1 rounded shadow-xl whitespace-nowrap z-50';
+          tooltip.innerHTML = `<span style="color: ${d.color}; font-weight: bold;">●</span> ${d.name} <span class="text-slate-400">(${d.frp})</span>`;
+          wrapper.appendChild(tooltip);
+
+          return wrapper;
+        });
+
+      // Fallback texture handler
+      const img = new Image();
+      img.onerror = () => world.globeImageUrl(fallbackTexture);
+      img.src = nasaSatTexture;
+
+      // Camera & Continuous Auto-Rotation Setup
+      world.pointOfView({ lat: 21.17, lng: 72.83, altitude: 2.15 }, 0);
+      world.controls().autoRotate = true;
+      world.controls().autoRotateSpeed = 0.5;
+      world.controls().enableZoom = true;
+
+      // --- ADD TWO REALISTIC SATELLITES IN 90° ORTHOGONAL ORBITAL PLANES ---
+      const scene = world.scene();
+      let animFrameId: number;
+
+      if (scene) {
+        // Add ambient light & directional light for metallic specular mirror reflections on satellites
+        const satLight = new THREE.DirectionalLight(0xffffff, 2.2);
+        satLight.position.set(160, 120, 220);
+        scene.add(satLight);
+        const satAmbLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(satAmbLight);
+
+        // --- SATELLITE 1: SUOMI-NPP VIIRS (Aerospace Titanium Grey MLI + Real Mirror Solar Wings) ---
+        const createSuomiNppSatellite = (beamColorHex: number, orbitRadius: number) => {
+          const satGroup = new THREE.Group();
+
+          const titaniumGreyBusMat = new THREE.MeshPhongMaterial({ color: 0x64748b, specular: 0xe2e8f0, shininess: 140 });
+          const silverMat = new THREE.MeshPhongMaterial({ color: 0xe2e8f0, specular: 0xffffff, shininess: 180 });
+          const chromeTrimMat = new THREE.MeshPhongMaterial({ color: 0xcbd5e1, specular: 0xffffff, shininess: 160 });
+          
+          const mirrorSolarMat = new THREE.MeshPhongMaterial({
+            color: 0x07152e,
+            specular: 0xffffff,
+            shininess: 260,
+            reflectivity: 0.95,
+          });
+
+          const lensMat = new THREE.MeshPhongMaterial({
+            color: beamColorHex,
+            specular: 0xffffff,
+            shininess: 200,
+            transparent: true,
+            opacity: 0.9,
+          });
+
+          const busGeo = new THREE.BoxGeometry(3.8, 3.8, 5.8);
+          const busMesh = new THREE.Mesh(busGeo, titaniumGreyBusMat);
+          satGroup.add(busMesh);
+
+          const foilStripGeo = new THREE.BoxGeometry(4.0, 0.4, 6.0);
+          const foilStrip = new THREE.Mesh(foilStripGeo, chromeTrimMat);
+          satGroup.add(foilStrip);
+
+          [-1, 1].forEach((dir) => {
+            const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 4.2, 12), silverMat);
+            strut.rotation.z = Math.PI / 2;
+            strut.position.set(dir * 3.9, 0, 0);
+            satGroup.add(strut);
+
+            const panelGeo = new THREE.BoxGeometry(9.6, 0.28, 4.2);
+            const panelMesh = new THREE.Mesh(panelGeo, mirrorSolarMat);
+            panelMesh.position.set(dir * 9.8, 0, 0);
+
+            const gridGeo = new THREE.BoxGeometry(9.7, 0.3, 4.3);
+            const gridMat = new THREE.MeshBasicMaterial({
+              color: 0x38bdf8,
+              wireframe: true,
+              transparent: true,
+              opacity: 0.35,
+            });
+            panelMesh.add(new THREE.Mesh(gridGeo, gridMat));
+            satGroup.add(panelMesh);
+          });
+
+          const sensorHousingGeo = new THREE.CylinderGeometry(1.6, 1.3, 2.8, 20);
+          const sensorHousingMesh = new THREE.Mesh(sensorHousingGeo, titaniumGreyBusMat);
+          sensorHousingMesh.position.set(0, 0, 3.8);
+          sensorHousingMesh.rotation.x = Math.PI / 2;
+
+          const lensGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.25, 20);
+          const lensMesh = new THREE.Mesh(lensGeo, lensMat);
+          lensMesh.position.set(0, 1.35, 0);
+          sensorHousingMesh.add(lensMesh);
+          satGroup.add(sensorHousingMesh);
+
+          const beamDistance = orbitRadius - 100;
+          const beamGeo = new THREE.CylinderGeometry(0.6, 9.0, beamDistance, 32, 1, true);
+          beamGeo.rotateX(Math.PI / 2);
+          beamGeo.translate(0, 0, beamDistance / 2);
+
+          const beamMat = new THREE.MeshBasicMaterial({
+            color: beamColorHex,
+            transparent: true,
+            opacity: 0.24,
+            side: THREE.DoubleSide,
+          });
+          satGroup.add(new THREE.Mesh(beamGeo, beamMat));
+
+          const scanFootprintGroup = new THREE.Group();
+          scanFootprintGroup.position.set(0, 0, beamDistance);
+
+          const ringGeo = new THREE.RingGeometry(7.0, 9.0, 32);
+          const scanFootprintMat = new THREE.MeshBasicMaterial({
+            color: beamColorHex,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.6,
+          });
+          scanFootprintGroup.add(new THREE.Mesh(ringGeo, scanFootprintMat));
+          satGroup.add(scanFootprintGroup);
+
+          return { satGroup, beamMat, scanFootprintMat };
         };
 
-        container.addEventListener('pointerdown', (e) => e.stopPropagation());
-        container.addEventListener('mousedown', (e) => e.stopPropagation());
-        container.addEventListener('click', handleClick);
+        // --- SATELLITE 2: COMMUNICATION SATELLITE (Pristine White/Silver MLI + Dual Dishes + Mirror Wings) ---
+        const createCommunicationSatellite = (beamColorHex: number, orbitRadius: number) => {
+          const satGroup = new THREE.Group();
 
-        return container;
+          const whiteBusMat = new THREE.MeshPhongMaterial({ color: 0xf8fafc, specular: 0xffffff, shininess: 150 });
+          const chromeDishMat = new THREE.MeshPhongMaterial({ color: 0xe2e8f0, specular: 0xffffff, shininess: 220 });
+          const titaniumAccentMat = new THREE.MeshPhongMaterial({ color: 0x64748b, specular: 0xcbd5e1, shininess: 160 });
+          const silverStrutMat = new THREE.MeshPhongMaterial({ color: 0xcbd5e1, specular: 0xffffff, shininess: 180 });
+          const thrusterMat = new THREE.MeshPhongMaterial({ color: 0x334155, specular: 0x94a3b8, shininess: 120 });
+
+          const comMirrorSolarMat = new THREE.MeshPhongMaterial({
+            color: 0x0284c7,
+            specular: 0xffffff,
+            shininess: 260,
+            reflectivity: 0.95,
+          });
+
+          const busGeo = new THREE.BoxGeometry(4.2, 3.4, 6.2);
+          const busMesh = new THREE.Mesh(busGeo, whiteBusMat);
+          satGroup.add(busMesh);
+
+          const skirtGeo = new THREE.BoxGeometry(4.4, 0.45, 6.4);
+          const skirtMesh = new THREE.Mesh(skirtGeo, titaniumAccentMat);
+          satGroup.add(skirtMesh);
+
+          [-1, 1].forEach((dir) => {
+            const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 4.5, 12), silverStrutMat);
+            strut.rotation.z = Math.PI / 2;
+            strut.position.set(dir * 4.2, 0, 0);
+            satGroup.add(strut);
+
+            const panelGeo = new THREE.BoxGeometry(11.2, 0.3, 4.5);
+            const panelMesh = new THREE.Mesh(panelGeo, comMirrorSolarMat);
+            panelMesh.position.set(dir * 10.5, 0, 0);
+
+            const gridGeo = new THREE.BoxGeometry(11.3, 0.32, 4.6);
+            const gridMat = new THREE.MeshBasicMaterial({
+              color: 0x38bdf8,
+              wireframe: true,
+              transparent: true,
+              opacity: 0.45,
+            });
+            panelMesh.add(new THREE.Mesh(gridGeo, gridMat));
+            satGroup.add(panelMesh);
+          });
+
+          // PRIMARY COMMUNICATION DISH ANTENNA 1
+          const dishBoom = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 2.5, 8), silverStrutMat);
+          dishBoom.position.set(0, 2.8, -1.0);
+          dishBoom.rotation.x = -Math.PI / 4;
+          satGroup.add(dishBoom);
+
+          const dishGeo1 = new THREE.SphereGeometry(2.6, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.44);
+          const dishMesh1 = new THREE.Mesh(dishGeo1, chromeDishMat);
+          dishMesh1.position.set(0, 3.8, -2.0);
+          dishMesh1.rotation.x = Math.PI * 0.65;
+
+          const feedHorn1 = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 2.0, 8), titaniumAccentMat);
+          feedHorn1.position.set(0, 1.0, 0);
+          dishMesh1.add(feedHorn1);
+          satGroup.add(dishMesh1);
+
+          // SECONDARY FEEDER LINK DISH ANTENNA 2
+          const dishGeo2 = new THREE.SphereGeometry(2.0, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.40);
+          const dishMesh2 = new THREE.Mesh(dishGeo2, chromeDishMat);
+          dishMesh2.position.set(2.8, 0, 2.0);
+          dishMesh2.rotation.y = Math.PI / 3;
+
+          const feedHorn2 = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.6, 8), titaniumAccentMat);
+          feedHorn2.position.set(0, 0.8, 0);
+          dishMesh2.add(feedHorn2);
+          satGroup.add(dishMesh2);
+
+          // RCS Rocket Nozzles
+          [-1.8, 1.8].forEach((x) => {
+            [-2.6, 2.6].forEach((z) => {
+              const thruster = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.7, 12), thrusterMat);
+              thruster.position.set(x, -2.0, z);
+              thruster.rotation.x = Math.PI;
+              satGroup.add(thruster);
+            });
+          });
+
+          const beamDistance = orbitRadius - 100;
+          const beamGeo = new THREE.CylinderGeometry(0.6, 9.0, beamDistance, 32, 1, true);
+          beamGeo.rotateX(Math.PI / 2);
+          beamGeo.translate(0, 0, beamDistance / 2);
+
+          const beamMat = new THREE.MeshBasicMaterial({
+            color: beamColorHex,
+            transparent: true,
+            opacity: 0.24,
+            side: THREE.DoubleSide,
+          });
+          satGroup.add(new THREE.Mesh(beamGeo, beamMat));
+
+          const scanFootprintGroup = new THREE.Group();
+          scanFootprintGroup.position.set(0, 0, beamDistance);
+
+          const ringGeo = new THREE.RingGeometry(7.0, 9.0, 32);
+          const scanFootprintMat = new THREE.MeshBasicMaterial({
+            color: beamColorHex,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.6,
+          });
+          scanFootprintGroup.add(new THREE.Mesh(ringGeo, scanFootprintMat));
+          satGroup.add(scanFootprintGroup);
+
+          return { satGroup, beamMat, scanFootprintMat };
+        };
+
+        // --- SATELLITE 1: SUOMI-NPP (Polar Orbit - Inner Orbital Shell Radius = 118) ---
+        const orbitRadius1 = 118;
+        const orbitTrackGroup1 = new THREE.Group();
+        orbitTrackGroup1.rotation.set(Math.PI / 2, 0, Math.PI * 0.1);
+
+        const curve1 = new THREE.EllipseCurve(0, 0, orbitRadius1, orbitRadius1, 0, 2 * Math.PI, false, 0);
+        const points1 = curve1.getPoints(120);
+        const trackGeo1 = new THREE.BufferGeometry().setFromPoints(points1.map(p => new THREE.Vector3(p.x, 0, p.y)));
+        const trackMat1 = new THREE.LineDashedMaterial({
+          color: 0x38bdf8,
+          linewidth: 1,
+          scale: 1,
+          dashSize: 3,
+          gapSize: 3,
+          transparent: true,
+          opacity: 0.45
+        });
+        const trackLine1 = new THREE.Line(trackGeo1, trackMat1);
+        trackLine1.computeLineDistances();
+        orbitTrackGroup1.add(trackLine1);
+        scene.add(orbitTrackGroup1);
+
+        const satPivot1 = new THREE.Group();
+        satPivot1.rotation.set(Math.PI / 2, 0, Math.PI * 0.1);
+        const sat1 = createSuomiNppSatellite(0x38bdf8, orbitRadius1);
+        satPivot1.add(sat1.satGroup);
+        scene.add(satPivot1);
+
+        // --- SATELLITE 2: COMMUNICATION SATELLITE (Outer Orbital Shell Radius = 140 - Farther Apart!) ---
+        const orbitRadius2 = 140;
+        const orbitTrackGroup2 = new THREE.Group();
+        orbitTrackGroup2.rotation.set(0, Math.PI * 0.15, Math.PI / 2);
+
+        const curve2 = new THREE.EllipseCurve(0, 0, orbitRadius2, orbitRadius2, 0, 2 * Math.PI, false, 0);
+        const points2 = curve2.getPoints(120);
+        const trackGeo2 = new THREE.BufferGeometry().setFromPoints(points2.map(p => new THREE.Vector3(p.x, 0, p.y)));
+        const trackMat2 = new THREE.LineDashedMaterial({
+          color: 0x38bdf8,
+          linewidth: 1,
+          scale: 1,
+          dashSize: 3,
+          gapSize: 3,
+          transparent: true,
+          opacity: 0.45
+        });
+        const trackLine2 = new THREE.Line(trackGeo2, trackMat2);
+        trackLine2.computeLineDistances();
+        orbitTrackGroup2.add(trackLine2);
+        scene.add(orbitTrackGroup2);
+
+        const satPivot2 = new THREE.Group();
+        satPivot2.rotation.set(0, Math.PI * 0.15, Math.PI / 2);
+        const sat2 = createCommunicationSatellite(0x38bdf8, orbitRadius2);
+        satPivot2.add(sat2.satGroup);
+        scene.add(satPivot2);
+
+        // --- RAYCASTING CLICK HANDLER FOR 3D SATELLITE MESHES ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        const onCanvasClick = (event: MouseEvent) => {
+          if (!container) return;
+          const rect = container.getBoundingClientRect();
+          mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+          mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+          const camera = world.camera();
+          if (!camera) return;
+
+          raycaster.setFromCamera(mouse, camera);
+
+          const intersects1 = raycaster.intersectObjects(sat1.satGroup.children, true);
+          if (intersects1.length > 0) {
+            setSelectedSatellite(SATELLITE_DOSSIERS.SUOMI_NPP);
+            return;
+          }
+
+          const intersects2 = raycaster.intersectObjects(sat2.satGroup.children, true);
+          if (intersects2.length > 0) {
+            setSelectedSatellite(SATELLITE_DOSSIERS.NOAA_20);
+            return;
+          }
+        };
+
+        container.addEventListener('click', onCanvasClick);
+
+        // --- ANIMATION LOOP: Opposing Directions & 180° Initial Offset ---
+        let satAngle1 = 0;
+        let satAngle2 = Math.PI; // 180° initial offset phase (on opposite sides of Earth!)
+
+        const animateSatellites = () => {
+          satAngle1 += 0.0024;  // Orbit 1 rotates Forward
+          satAngle2 -= 0.0024;  // Orbit 2 rotates in REVERSE / OPPOSITE direction!
+
+          const satX1 = Math.cos(satAngle1) * orbitRadius1;
+          const satZ1 = Math.sin(satAngle1) * orbitRadius1;
+          sat1.satGroup.position.set(satX1, 0, satZ1);
+          sat1.satGroup.lookAt(0, 0, 0);
+          sat1.beamMat.opacity = 0.20 + Math.sin(satAngle1 * 6) * 0.07;
+
+          const satX2 = Math.cos(satAngle2) * orbitRadius2;
+          const satZ2 = Math.sin(satAngle2) * orbitRadius2;
+          sat2.satGroup.position.set(satX2, 0, satZ2);
+          sat2.satGroup.lookAt(0, 0, 0);
+          sat2.beamMat.opacity = 0.20 + Math.cos(satAngle2 * 5) * 0.07;
+
+          animFrameId = requestAnimationFrame(animateSatellites);
+        };
+        animateSatellites();
+      }
+
+      // Resume auto-rotation after user interaction
+      let interactTimeout: ReturnType<typeof setTimeout>;
+      const controls = world.controls();
+      controls.addEventListener('start', () => {
+        controls.autoRotate = false;
+        clearTimeout(interactTimeout);
+      });
+      controls.addEventListener('end', () => {
+        interactTimeout = setTimeout(() => {
+          controls.autoRotate = true;
+        }, 2500);
       });
 
-    // Fallback texture handling if primary satellite image fails
-    const img = new Image();
-    img.onerror = () => {
-      world.globeImageUrl(fallbackTexture);
-    };
-    img.src = nasaSatTexture;
+      globeInstanceRef.current = world;
 
-    // Camera initial position & rotation setup
-    world.pointOfView({ lat: 15.0, lng: 45.0, altitude: 0.8 }, 0);
-    const controls = world.controls();
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.35;
-    controls.enableZoom = true;
-    controls.zoomSpeed = 1.6;
-
-    // OrbitControls' default near limit stops well short of the surface, so
-    // scrolling in could never separate detections a few hundred metres
-    // apart. 101 keeps the camera just outside the globe (radius 100).
-    controls.minDistance = 101;
-    controls.maxDistance = 800;
-
-    // The spin is a nice idle state but fights you the moment you try to look
-    // at something, so any interaction ends it.
-    const stopSpin = () => {
-      controls.autoRotate = false;
-    };
-    controls.addEventListener('start', stopSpin);
-    globeElRef.current.addEventListener('wheel', stopSpin, { passive: true });
-
-    // Custom orbital light tweaking
-    const scene = world.scene();
-    if (scene) {
-      scene.traverse((obj: any) => {
-        if (obj.isDirectionalLight) {
-          obj.intensity = 2.2;
-          obj.color.setHex(0xffffff);
+      const handleResize = () => {
+        if (globeInstanceRef.current && globeElRef.current) {
+          const w = globeElRef.current.clientWidth || 380;
+          const h = globeElRef.current.clientHeight || 380;
+          globeInstanceRef.current.width(w).height(h);
         }
-      });
+      };
+      window.addEventListener('resize', handleResize);
+
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        clearTimeout(interactTimeout);
+        if (animFrameId) cancelAnimationFrame(animFrameId);
+        if (globeElRef.current) globeElRef.current.innerHTML = '';
+      };
+    } catch (e) {
+      console.warn('3D Globe initialization warning:', e);
     }
-
-    globeInstanceRef.current = world;
-
-    const handleResize = () => {
-      if (globeElRef.current && globeInstanceRef.current) {
-        globeInstanceRef.current.width(globeElRef.current.clientWidth);
-        globeInstanceRef.current.height(globeElRef.current.clientHeight);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      controls.removeEventListener('start', stopSpin);
-      window.removeEventListener('resize', handleResize);
-      if (globeElRef.current) {
-        globeElRef.current.innerHTML = '';
-      }
-    };
-  }, []); // Run ONCE on mount
-
-  // Fires arrive after the globe is built, so the data is pushed here rather
-  // than captured in the init effect. Without this the globe stays empty.
-  useEffect(() => {
-    const world = globeInstanceRef.current;
-    if (!world) return;
-    markerElementsRef.current.clear();
-    world.htmlElementsData(hotspots);
-
-    // Frame the fires the first time a non-empty batch lands, so the AOI is
-    // in view instead of the default mid-ocean camera.
-    if (hotspots.length > 0 && !hasFramedRef.current) {
-      hasFramedRef.current = true;
-      const lat = hotspots.reduce((a, h) => a + h.lat, 0) / hotspots.length;
-      const lng = hotspots.reduce((a, h) => a + h.lng, 0) / hotspots.length;
-      world.pointOfView({ lat, lng, altitude: 1.1 }, 1600);
-    }
-  }, [hotspots]);
-
-  // Synchronize Marker Visual States when selectedIncident changes
-  useEffect(() => {
-    markerElementsRef.current.forEach((el, id) => {
-      const fire = hotspotsRef.current.find((h) => h.id === id);
-      const colour = classColor(fire?.classification ?? 'Unknown Anomaly');
-      const isSelected = selectedIncident?.id === id;
-      const size = fire ? Math.max(3.5, Math.min(8, 3.5 + Math.sqrt(fire.frpMw) / 2)) : 5;
-
-      if (isSelected) {
-        el.core.style.width = `${size + 4}px`;
-        el.core.style.height = `${size + 4}px`;
-        el.core.style.border = '2px solid #FFFFFF';
-        el.core.style.boxShadow = '0 0 14px rgba(255, 255, 255, 0.95)';
-        el.halo.style.display = 'none';
-      } else {
-        el.core.style.width = `${size}px`;
-        el.core.style.height = `${size}px`;
-        el.core.style.border =
-          fire?.validityVerdict === 'LIKELY_FALSE_ALARM' ? `1.5px dashed ${colour}` : 'none';
-        el.core.style.boxShadow =
-          fire?.validityVerdict === 'LIKELY_FALSE_ALARM' ? 'none' : `0 0 4px ${colour}99`;
-        el.halo.style.display = 'block';
-      }
-    });
-  }, [selectedIncident]);
-
-  const handleClosePanel = () => {
-    setSelectedIncident(null);
-    if (globeInstanceRef.current) {
-      globeInstanceRef.current.controls().autoRotate = true;
-    }
-  };
+  }, []);
 
   return (
-    <div className="h-screen w-screen bg-black text-[#F1F4F6] flex flex-col font-mono overflow-hidden relative selection:bg-[#0088ff] selection:text-white">
-      {/* 3D WebGL Earth Canvas */}
-      <div className="absolute inset-0 z-0 bg-black">
-        <div ref={globeElRef} className="w-full h-full" />
-      </div>
-
-      {/* Cinematic Edge Vignette Gradient Overlay */}
-      <div className="absolute inset-0 pointer-events-none z-10 bg-radial-vignette opacity-80" />
-
-      {/* TOP HEADER: BRANDING ONLY AS "INDUSTRIAL FIREWATCH AI" (NO NASA BRANDING) */}
-      <header className="relative z-30 pt-6 px-8 flex items-start justify-between w-full pointer-events-auto">
-        {/* TOP LEFT: BRAND TITLE & TELEMETRY */}
-        <div className="space-y-1 text-left text-white/80 font-mono tracking-widest text-[11px] uppercase">
-          <div className="flex items-center space-x-3 text-white font-bold text-sm">
-            <ShieldAlert className="w-4 h-4 text-[#3DB7D9]" />
-            <span>INDUSTRIAL FIREWATCH AI</span>
+    <div className="min-h-screen bg-[#05080E] text-slate-200 font-sans selection:bg-cyan-500/20 antialiased">
+      
+      {/* MINIMAL NAVBAR */}
+      <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#05080E]/90 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-sm tracking-wider font-bold text-white uppercase">
+              GEOFLARE <span className="text-cyan-400">AI</span>
+            </span>
           </div>
-          <div className="flex items-center space-x-3 text-white/60 text-[10px]">
-            <span>LIVE THERMAL ANOMALY FEED</span>
-            <span>&bull;</span>
-            <span>TIME: {timeStr}</span>
-          </div>
-        </div>
 
-        {/* TOP CENTER: BRAND HEADER TEXT */}
-        <div className="absolute left-1/2 top-6 -translate-x-1/2 hidden md:flex flex-col items-center">
-          <div className="font-mono text-sm font-bold tracking-[0.3em] text-white/90 uppercase select-none">
-            GLOBAL THERMAL & HAZARD OBSERVATION
+          <div className="flex items-center gap-6 text-xs font-mono">
+            <a href="#the-problem" className="text-slate-400 hover:text-white transition-colors">
+              The Problem
+            </a>
+            <a href="#context-engine" className="text-slate-400 hover:text-white transition-colors">
+              Sensor Fusion
+            </a>
+            <a href="#signatures" className="text-slate-400 hover:text-white transition-colors">
+              Classifications
+            </a>
+            <button
+              onClick={() => navigate('/command-center')}
+              className="px-3.5 py-1.5 rounded border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors uppercase cursor-pointer"
+            >
+              Explore Operations →
+            </button>
           </div>
-        </div>
-
-        {/* TOP RIGHT: NAVIGATION */}
-        <div className="flex items-center space-x-6 font-mono text-[11px] tracking-widest text-white/80 uppercase">
-          <button
-            onClick={() => navigate('/command-center')}
-            className="hover:text-white transition flex items-center space-x-1.5 cursor-pointer bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded border border-white/20"
-          >
-            <span>OPERATIONS</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-          <span className="text-white/30">/</span>
-          <button
-            onClick={() => navigate('/mission-brief')}
-            className="hover:text-white transition flex items-center space-x-1.5 cursor-pointer"
-          >
-            <BookOpen className="w-3.5 h-3.5 text-[#3DB7D9]" />
-            <span>MISSION BRIEF</span>
-          </button>
         </div>
       </header>
 
-      {/* CENTER HUD BRACKET CALLOUT */}
-      {!selectedIncident && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="font-mono text-white/60 text-xs tracking-[0.25em] uppercase backdrop-blur-[1px] px-4 py-2 rounded border border-white/10 bg-black/30">
-            [ INDUSTRIAL FIREWATCH AI : LIVE THERMAL ANOMALY FEED ]
+      {/* BEAT 01: THE HERO */}
+      <section className="relative pt-20 pb-28 border-b border-white/[0.08] px-6">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          
+          <div className="lg:col-span-7 space-y-6">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/[0.03] text-slate-300 text-xs font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              Satellite Thermal Intelligence
+            </div>
+
+            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight text-white leading-[1.08]">
+              Satellites see heat. <br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-200 to-amber-200">
+                They can’t tell you what’s burning.
+              </span>
+            </h1>
+
+            <p className="text-slate-400 text-base sm:text-lg max-w-xl leading-relaxed">
+              Every hour, Earth observation sensors register thousands of high-temperature anomalies. 
+              GeoFlare cross-references raw thermal detections with infrastructure footprints, land cover, and 180-day persistence to turn noisy pixels into classified events.
+            </p>
+
+            <div className="flex flex-wrap gap-3 pt-2 font-mono text-xs">
+              <button
+                onClick={() => navigate('/global-earth')}
+                className="px-5 py-3 bg-gradient-to-r from-cyan-500 to-sky-600 hover:from-cyan-400 hover:to-sky-500 text-black font-bold tracking-wider uppercase rounded transition-all shadow-[0_0_25px_rgba(6,182,212,0.4)] flex items-center space-x-2 cursor-pointer"
+              >
+                <Globe2 className="w-4 h-4 text-black" />
+                <span>Launch Orbital Earth →</span>
+              </button>
+
+              <a
+                href="#context-engine"
+                className="px-5 py-3 bg-white/[0.05] hover:bg-white/10 border border-white/15 text-slate-300 font-semibold tracking-wider uppercase rounded transition-all flex items-center"
+              >
+                See Context Engine ↓
+              </a>
+            </div>
+
+            {/* Grounded Provenance */}
+            <div className="pt-6 border-t border-white/[0.08] flex items-center gap-6 font-mono text-xs text-slate-400">
+              <div>
+                <span className="text-white font-bold">VIIRS / MODIS</span> Public Sensor Data
+              </div>
+              <span className="text-slate-600">/</span>
+              <div>
+                <span className="text-white font-bold">180-Day</span> Historical Baselines
+              </div>
+              <span className="text-slate-600">/</span>
+              <div>
+                <span className="text-white font-bold">Sub-Kilometer</span> GIS Precision
+              </div>
+            </div>
           </div>
+
+          {/* 3D WebGL Globe Visualizer */}
+          <div className="lg:col-span-5 flex flex-col items-center justify-center">
+            <div
+              onClick={() => navigate('/global-earth')}
+              className="relative w-[340px] h-[340px] sm:w-[400px] sm:h-[400px] rounded-2xl border border-cyan-500/30 bg-[#040814]/80 overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.7)] group cursor-pointer hover:border-cyan-400 transition-all"
+            >
+              <div ref={globeElRef} className="w-full h-full cursor-pointer" />
+              
+              <div className="absolute top-3 left-3 font-mono text-[10px] text-cyan-400/90 bg-[#05080E]/80 px-2 py-1 rounded border border-cyan-500/30 backdrop-blur-md flex items-center gap-1.5 group-hover:bg-cyan-500/20 transition-colors">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                <span>3D GLOBE + INFRARED SENSOR (CLICK TO LAUNCH)</span>
+              </div>
+              <div className="absolute bottom-3 right-3 font-mono text-[10px] text-cyan-300 bg-[#05080E]/90 px-2.5 py-1 rounded border border-cyan-500/40 font-bold group-hover:bg-cyan-500 group-hover:text-black transition-colors flex items-center space-x-1">
+                <span>OPEN 3D GLOBAL EARTH →</span>
+              </div>
+            </div>
+            <div className="text-[11px] font-mono text-slate-400 mt-3 text-center">
+              Active VIIRS sensor scanning infrared heat anomalies. Click globe to launch full-screen 3D Earth view.
+            </div>
+          </div>
+
         </div>
-      )}
+      </section>
 
-      {/* FIRE INFORMATION PANEL (OPENED ON CLICK) */}
-      {selectedIncident && (
-        <div className="absolute top-20 right-8 z-40 w-96 max-w-[calc(100vw-2rem)] bg-[#081019]/95 border border-white/20 rounded-xl p-5 backdrop-blur-xl shadow-2xl font-mono text-xs text-white space-y-4 pointer-events-auto">
-          <div className="flex items-center justify-between border-b border-white/10 pb-3">
-            <span
-              className="px-2.5 py-0.5 text-[9.5px] font-bold tracking-widest rounded uppercase border"
-              style={{
-                color: classColor(selectedIncident.classification),
-                borderColor: `${classColor(selectedIncident.classification)}66`,
-                backgroundColor: `${classColor(selectedIncident.classification)}22`,
-              }}
-            >
-              {selectedIncident.classification}
+      {/* BEAT 02: THE PROBLEM (HEAT ALONE IS AMBIGUOUS) */}
+      <section id="the-problem" className="py-24 border-b border-white/[0.08] px-6 bg-[#04070C]">
+        <div className="max-w-5xl mx-auto space-y-12">
+          
+          <div className="text-center space-y-3 max-w-2xl mx-auto">
+            <span className="font-mono text-xs text-cyan-400 uppercase tracking-widest font-semibold">
+              The Spatial Dilemma
             </span>
-            <button
-              onClick={handleClosePanel}
-              className="p-1 rounded-md text-white/60 hover:text-white hover:bg-white/10 transition cursor-pointer"
-              title="Resume Globe Observation"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div>
-            <h2 className="text-base font-bold text-white tracking-wide">{selectedIncident.id}</h2>
-            <p className="text-[11px] text-white/60 font-mono mt-0.5">
-              {selectedIncident.locationName} &bull; {selectedIncident.timeFormatted}
+            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+              To a raw satellite sensor, every fire looks identical.
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Standard Earth observation instruments detect thermal radiation in the 3.7μm infrared band. 
+              The sensor registers a temperature value—nothing more.
             </p>
           </div>
 
-          {/* Validity before class, the same order the detail page uses. */}
-          <div className="space-y-3 text-[11px] bg-white/5 p-3.5 rounded-lg border border-white/10">
-            <div>
-              <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">
-                Is this a real fire?
-              </span>
-              <span className="text-white font-medium">
-                {selectedIncident.validityVerdict
-                  ? `${VERDICT_LABEL[selectedIncident.validityVerdict]} — ${selectedIncident.validityConfidencePct}% likely genuine`
-                  : 'Not yet assessed'}
-              </span>
+          {/* Side-by-Side Comparison: What Satellite Sees vs What Ground Truth Is */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">
+            
+            {/* Left: What the Satellite Sees (Rich GIS Grid & Land Contour Background) */}
+            <div className="p-8 rounded-xl border border-white/10 bg-[#070C16] flex flex-col justify-between">
+              <div>
+                <div className="font-mono text-xs text-red-400 font-semibold mb-2">
+                  RAW SATELLITE OUTPUT
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">
+                  Unidentified Thermal Anomaly
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed mb-6">
+                  A 375-meter pixel emitting high radiative power. Without context, an operator has no way to know if this requires emergency evacuation or can be completely ignored.
+                </p>
+              </div>
+
+              {/* Spatial Hotspot Visualizer with Faint GIS Coastline & Asset Grid Background */}
+              <div className="h-52 rounded-lg bg-[#040810] border border-white/10 flex flex-col items-center justify-center relative overflow-hidden">
+                {/* Vector GIS Map Background Overlay */}
+                <svg className="absolute inset-0 w-full h-full opacity-25 pointer-events-none" viewBox="0 0 400 200">
+                  <path d="M 20,80 Q 90,30 160,90 T 320,60 T 380,120" fill="none" stroke="rgba(56,189,248,0.4)" strokeWidth="1.5" strokeDasharray="4 4" />
+                  <path d="M 40,150 Q 120,110 210,160 T 360,140" fill="none" stroke="rgba(56,189,248,0.25)" strokeWidth="1" />
+                  <rect x="140" y="50" width="120" height="90" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="3 3" />
+                  <circle cx="200" cy="95" r="35" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+                  {/* Grid Lines */}
+                  <line x1="0" y1="95" x2="400" y2="95" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+                  <line x1="200" y1="0" x2="200" y2="200" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+                </svg>
+
+                {/* Thermal Hotspot Bloom sitting ON TOP of GIS Map with Pushbroom Scanline & Interrogation Reticle */}
+                <div className="absolute inset-0 animate-sensor-scan pointer-events-none border-b border-cyan-400/40" />
+                <div className="absolute w-28 h-28 border border-dashed border-cyan-400/40 rounded-full animate-ping opacity-25 pointer-events-none" />
+                <div className="absolute top-3 left-3 text-[9px] font-mono text-cyan-400/90 bg-black/90 px-2 py-0.5 rounded border border-cyan-500/40 z-10 flex items-center space-x-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                  <span>RESOLVING: [?][?] · CLASSIFICATION: UNKNOWN</span>
+                </div>
+
+                {/* Dynamic Thermal Hotspot Bloom shifting on hover */}
+                <div 
+                  className={`absolute w-36 h-36 rounded-full flir-heat-bloom transition-colors duration-500 ${
+                    hoveredGroundIndex === 0 ? 'bg-cyan-500/40' :
+                    hoveredGroundIndex === 1 ? 'bg-red-500/45' :
+                    hoveredGroundIndex === 2 ? 'bg-amber-500/40' :
+                    hoveredGroundIndex === 3 ? 'bg-emerald-500/40' : 'bg-red-500/30'
+                  }`}
+                />
+                <div 
+                  className="absolute w-20 h-20 rounded-full flir-heat-bloom bg-amber-400/50 transition-colors duration-500" 
+                  style={{ animationDelay: '-1s' }} 
+                />
+                <div 
+                  className="w-4 h-4 rounded-full bg-white relative z-10 transition-all duration-300"
+                  style={{
+                    boxShadow: 
+                      hoveredGroundIndex === 0 ? '0 0 22px #38bdf8' :
+                      hoveredGroundIndex === 1 ? '0 0 22px #ef4444' :
+                      hoveredGroundIndex === 2 ? '0 0 22px #f59e0b' :
+                      hoveredGroundIndex === 3 ? '0 0 22px #10b981' : '0 0 15px #ffffff'
+                  }}
+                />
+                <div className="hud-scanline" />
+                
+                <div className="absolute bottom-3 font-mono text-[11px] text-slate-300 bg-black/90 px-3 py-1 rounded border border-white/20 z-10 transition-all">
+                  LAT: 29.742° N · TEMP:{' '}
+                  <span className="font-bold text-amber-400">
+                    {hoveredGroundIndex === 0 ? '1,120°C' : hoveredGroundIndex === 1 ? '1,380°C' : hoveredGroundIndex === 2 ? '860°C' : hoveredGroundIndex === 3 ? '540°C' : '1,140°C'}
+                  </span>{' '}
+                  · STATUS:{' '}
+                  <span className="font-bold text-cyan-300">
+                    {hoveredGroundIndex === 0 ? 'ROUTINE FLARE' : hoveredGroundIndex === 1 ? 'UNCONTAINED CHEMICAL FIRE' : hoveredGroundIndex === 2 ? 'WILDLAND ADVANCE' : hoveredGroundIndex === 3 ? 'AGRICULTURAL BURN' : 'UNKNOWN'}
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            {/* Right: Ground Truth Reality */}
+            <div className="p-8 rounded-xl border border-white/10 bg-[#070C16] flex flex-col justify-between">
               <div>
-                <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">
-                  Radiative Power
-                </span>
-                <span className="text-white font-medium">{selectedIncident.frpMw} MW</span>
+                <div className="font-mono text-xs text-cyan-400 font-semibold mb-2">
+                  THE GROUND TRUTH REALITY
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">
+                  Four Radically Different Events
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                  Hover over any ground truth event below to test how that exact same pixel shifts operational meaning:
+                </p>
               </div>
-              <div>
-                <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">
-                  Severity
-                </span>
-                <span className="text-white font-medium">{selectedIncident.severity}</span>
+
+              <div className="space-y-2.5 font-mono text-xs">
+                <div 
+                  onMouseEnter={() => setHoveredGroundIndex(0)}
+                  onMouseLeave={() => setHoveredGroundIndex(null)}
+                  className={`p-3 rounded border transition-all cursor-pointer flex justify-between items-center ${
+                    hoveredGroundIndex === 0 ? 'bg-cyan-500/20 border-cyan-400 shadow-[0_0_15px_rgba(56,189,248,0.3)]' : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="text-white font-semibold">A permitted refinery flare stack</span>
+                  <span className="text-cyan-400 text-[11px] font-bold">→ Routine / Suppress</span>
+                </div>
+
+                <div 
+                  onMouseEnter={() => setHoveredGroundIndex(1)}
+                  onMouseLeave={() => setHoveredGroundIndex(null)}
+                  className={`p-3 rounded border transition-all cursor-pointer flex justify-between items-center ${
+                    hoveredGroundIndex === 1 ? 'bg-red-500/20 border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="text-white font-semibold">An uncontrolled chemical storage fire</span>
+                  <span className="text-red-400 text-[11px] font-bold">→ Plant Evacuation</span>
+                </div>
+
+                <div 
+                  onMouseEnter={() => setHoveredGroundIndex(2)}
+                  onMouseLeave={() => setHoveredGroundIndex(null)}
+                  className={`p-3 rounded border transition-all cursor-pointer flex justify-between items-center ${
+                    hoveredGroundIndex === 2 ? 'bg-amber-500/20 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="text-white font-semibold">A fast-moving wildland perimeter</span>
+                  <span className="text-amber-400 text-[11px] font-bold">→ Emergency Dispatch</span>
+                </div>
+
+                <div 
+                  onMouseEnter={() => setHoveredGroundIndex(3)}
+                  onMouseLeave={() => setHoveredGroundIndex(null)}
+                  className={`p-3 rounded border transition-all cursor-pointer flex justify-between items-center ${
+                    hoveredGroundIndex === 3 ? 'bg-emerald-500/20 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="text-white font-semibold">A seasonal crop stubble burn</span>
+                  <span className="text-emerald-400 text-[11px] font-bold">→ Permitted Land Use</span>
+                </div>
               </div>
-              <div>
-                <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">
-                  Pass
-                </span>
-                <span className="text-white font-medium">
-                  {selectedIncident.dayNight === 'N' ? 'Night' : 'Day'}
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      {/* BEAT 03: THE CONTEXTUAL SENSOR FUSION ENGINE */}
+      <section id="context-engine" className="py-24 border-b border-white/[0.08] px-6 bg-[#060A12]">
+        <div className="max-w-5xl mx-auto space-y-10">
+          
+          <div className="space-y-2 text-center max-w-3xl mx-auto">
+            <span className="font-mono text-xs text-cyan-400 uppercase tracking-widest font-semibold px-3 py-1 rounded bg-cyan-950/60 border border-cyan-500/30">
+              [ CONTEXTUAL SENSOR FUSION ENGINE ]
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight mt-2">
+              From Ambiguous Hotspot to Confirmed Operational Event
+            </h2>
+            <p className="text-slate-400 text-sm sm:text-base leading-relaxed">
+              A 375m satellite pixel contains zero context. Watch how layering cadastral plant boundaries, land cover classification, and 180-day thermal baselines resolves signal ambiguity in real time.
+            </p>
+          </div>
+
+          {/* Interactive Step-by-Step Resolution Terminal */}
+          <div className="rounded-xl border border-white/15 bg-[#070D18] shadow-2xl overflow-hidden">
+            
+            {/* Step Progress Stepper Bar */}
+            <div className="p-4 border-b border-white/10 bg-white/[0.02] grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={() => setActiveLayers(['thermal'])}
+                className={`relative overflow-hidden p-3 rounded-lg text-left transition-all border cursor-pointer ${
+                  activeLayers.length === 1
+                    ? 'bg-amber-500/15 border-amber-500/60 text-white shadow-lg'
+                    : 'bg-white/[0.02] border-white/5 text-slate-400 hover:border-white/20'
+                }`}
+              >
+                {activeLayers.length === 1 && <div className="border-beam" />}
+                <div className="flex items-center justify-between font-mono text-[10px] text-amber-400 font-bold mb-1">
+                  <span>STAGE 01</span>
+                  <AnimatedNumber value={18} />
+                </div>
+                <div className="font-bold text-xs text-white">1. Raw Thermal Detection</div>
+                <div className="text-[11px] text-slate-400 font-mono mt-0.5">375m MWIR Pixel (1,120°C)</div>
+              </button>
+
+              <button
+                onClick={() => setActiveLayers(['thermal', 'infrastructure'])}
+                className={`relative overflow-hidden p-3 rounded-lg text-left transition-all border cursor-pointer ${
+                  activeLayers.includes('infrastructure') && !activeLayers.includes('history')
+                    ? 'bg-sky-500/15 border-sky-500/60 text-white shadow-lg'
+                    : 'bg-white/[0.02] border-white/5 text-slate-400 hover:border-white/20'
+                }`}
+              >
+                {activeLayers.includes('infrastructure') && !activeLayers.includes('history') && <div className="border-beam" />}
+                <div className="flex items-center justify-between font-mono text-[10px] text-sky-400 font-bold mb-1">
+                  <span>STAGE 02</span>
+                  <AnimatedNumber value={65} />
+                </div>
+                <div className="font-bold text-xs text-white">2. Infrastructure Registry</div>
+                <div className="text-[11px] text-slate-400 font-mono mt-0.5">+ Deer Park SEZ Polygon</div>
+              </button>
+
+              <button
+                onClick={() => setActiveLayers(['thermal', 'infrastructure', 'history'])}
+                className={`relative overflow-hidden p-3 rounded-lg text-left transition-all border cursor-pointer ${
+                  activeLayers.includes('history')
+                    ? 'bg-emerald-500/15 border-emerald-500/60 text-white shadow-lg'
+                    : 'bg-white/[0.02] border-white/5 text-slate-400 hover:border-white/20'
+                }`}
+              >
+                {activeLayers.includes('history') && <div className="border-beam" />}
+                <div className="flex items-center justify-between font-mono text-[10px] text-emerald-400 font-bold mb-1">
+                  <span>STAGE 03</span>
+                  <AnimatedNumber value={99.4} />
+                </div>
+                <div className="font-bold text-xs text-white">3. 180-Day Recurrence Audit</div>
+                <div className="text-[11px] text-slate-400 font-mono mt-0.5">+ Flare Stack Baseline</div>
+              </button>
+            </div>
+
+            {/* Stage Viewport Container */}
+            <div className="p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              
+              {/* Left Column: High-Density Satellite GIS Viewport */}
+              <div className="lg:col-span-6 h-80 rounded-lg bg-[#03060C] border border-white/15 relative overflow-hidden flex flex-col justify-between p-4 shadow-inner">
+                
+                {/* Simulated High-Resolution Industrial Plant GIS Map Basemap */}
+                <svg className="absolute inset-0 w-full h-full opacity-35 pointer-events-none" viewBox="0 0 500 350">
+                  <defs>
+                    <pattern id="gisGrid" width="30" height="30" patternUnits="userSpaceOnUse">
+                      <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#gisGrid)" />
+                  
+                  {/* Plant Access Roads & Internal Perimeter Vector Lines */}
+                  <path d="M 40,280 L 180,280 L 250,180 L 460,180" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="2" />
+                  <path d="M 180,280 L 180,60 L 420,60" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" strokeDasharray="4 4" />
+                  
+                  {/* Storage Tank Structures */}
+                  <circle cx="100" cy="120" r="24" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+                  <circle cx="160" cy="120" r="24" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+                  <circle cx="100" cy="180" r="24" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+                  
+                  {/* Petrochemical Complex Building Blocks */}
+                  <rect x="240" y="80" width="70" height="45" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+                  <rect x="330" y="80" width="80" height="55" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+                  
+                  {/* Flare Stack Coordinates Target Point */}
+                  <circle cx="280" cy="200" r="6" fill="none" stroke="#38bdf8" strokeWidth="1.5" />
+                  <line x1="280" y1="185" x2="280" y2="215" stroke="#38bdf8" strokeWidth="1" />
+                  <line x1="265" y1="200" x2="295" y2="200" stroke="#38bdf8" strokeWidth="1" />
+                </svg>
+
+                {/* HUD Top Lat/Long Coordinate Banner */}
+                <div className="relative z-10 flex justify-between items-center font-mono text-[10px]">
+                  <div className="bg-black/80 px-2.5 py-1 rounded border border-white/10 text-cyan-400">
+                    LAT: 29.7420° N · LNG: 95.1802° W · DEER PARK, TX
+                  </div>
+                  <div className="bg-black/80 px-2.5 py-1 rounded border border-white/10 text-slate-400">
+                    ZOOM: 1:5,000 GIS
+                  </div>
+                </div>
+
+                {/* Center Visual Map Overlays */}
+                <div className="relative inset-0 my-auto flex items-center justify-center pointer-events-none z-10">
+                  
+                  {/* Stage 1: Raw Thermal Infrared Pixel with Target Lock Flash Ring */}
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-24 h-24 rounded-full bg-amber-500/35 blur-xl animate-pulse" />
+                    <div className="w-10 h-10 rounded-full bg-amber-400/70 blur-md absolute" />
+                    <div className="w-4 h-4 rounded-full bg-white shadow-[0_0_20px_#ffffff] absolute z-10">
+                      {activeLayers.includes('history') && (
+                        <div className="absolute -inset-3 border-2 border-emerald-400 rounded-full animate-ping opacity-90" />
+                      )}
+                    </div>
+                    
+                    {!activeLayers.includes('infrastructure') && (
+                      <div className="absolute top-12 bg-amber-950/90 border border-amber-500/60 text-amber-300 font-mono text-[10px] px-2.5 py-1 rounded whitespace-nowrap shadow-xl">
+                        375m SATELLITE PIXEL: 1,120°C [UNCLASSIFIED]
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Stage 2: Cadastral Plant Boundary Polygon Overlay with SVG stroke-dashoffset CAD Draw */}
+                  {activeLayers.includes('infrastructure') && (
+                    <div className="absolute w-72 h-48 rounded-lg bg-cyan-500/10 transition-all flex flex-col justify-between p-3 pointer-events-none z-20">
+                      <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+                        <rect
+                          x="0"
+                          y="0"
+                          width="100%"
+                          height="100%"
+                          rx="8"
+                          fill="none"
+                          stroke="#38bdf8"
+                          strokeWidth="2"
+                          strokeDasharray="12 6"
+                          className="animate-cad-draw"
+                        />
+                      </svg>
+                      <div className="flex justify-between items-start font-mono text-[9px] relative z-10">
+                        <span className="bg-black/90 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/40 font-bold">
+                          REGISTERED CADASTRAL PERIMETER
+                        </span>
+                        <span className="bg-black/90 text-slate-300 px-2 py-0.5 rounded border border-white/10">
+                          DEER PARK SEZ (ID: PETRO-TX-84)
+                        </span>
+                      </div>
+                      <div className="font-mono text-[9px] text-cyan-400 bg-black/90 px-2 py-0.5 rounded border border-cyan-500/40 self-end relative z-10">
+                        MATCH: FLARE STACK #2 (0m OFFSET)
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Stage 3: 180-Day Recurrence Radar Ring Overlay with Historical Sonar Marker Pings */}
+                  {activeLayers.includes('history') && (
+                    <div className="absolute flex items-center justify-center pointer-events-none z-25">
+                      <div className="w-48 h-48 border-2 border-emerald-400/80 rounded-full animate-ping opacity-40 absolute" />
+                      <div className="w-44 h-44 border-2 border-emerald-400/60 rounded-full animate-spin-slow relative">
+                        {/* 4 Historical Marker Pings around ellipse perimeter */}
+                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full absolute top-0 left-1/2 -translate-x-1/2 shadow-[0_0_10px_#10b981]" />
+                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full absolute bottom-0 left-1/2 -translate-x-1/2 shadow-[0_0_10px_#10b981]" />
+                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full absolute left-0 top-1/2 -translate-y-1/2 shadow-[0_0_10px_#10b981]" />
+                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full absolute right-0 top-1/2 -translate-y-1/2 shadow-[0_0_10px_#10b981]" />
+                      </div>
+                      <div className="w-56 h-56 border border-emerald-500/25 rounded-full absolute" />
+                      <div className="absolute top-[-24px] bg-emerald-950/90 border border-emerald-500/60 text-emerald-300 font-mono text-[10px] px-3 py-1 rounded-full whitespace-nowrap shadow-2xl font-bold flex items-center space-x-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>180-DAY PERSISTENCE: 148 OF 180 NIGHTS ACTIVE</span>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+
+                {/* HUD Bottom Status Banner */}
+                <div className="relative z-10 flex justify-between items-center font-mono text-[10px]">
+                  <div className="bg-black/80 px-2.5 py-1 rounded border border-white/10 text-slate-300">
+                    TARGET: <span className="text-white font-bold">DEER_PARK_REFINERY_STACK_2</span>
+                  </div>
+                  <div className="bg-black/80 px-2.5 py-1 rounded border border-white/10 text-cyan-400">
+                    {activeLayers.includes('history') ? 'HISTORICAL BASELINE VERIFIED' : 'AUDIT IN PROGRESS'}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Right Column: Structured Signal Decomposition & Verdict */}
+              <div className="lg:col-span-6 space-y-5 font-mono">
+                
+                {/* Confidence Bar */}
+                <div>
+                  <div className="flex justify-between items-center text-xs mb-1.5">
+                    <span className="text-slate-400 font-bold uppercase">CLASSIFICATION CONFIDENCE</span>
+                    <span className="font-bold text-sm">
+                      {activeLayers.length === 1 && <span className="text-amber-400">18% (Ambiguous Signal)</span>}
+                      {activeLayers.includes('infrastructure') && !activeLayers.includes('history') && <span className="text-sky-300">65% (Inside Plant Polygon)</span>}
+                      {activeLayers.includes('history') && <span className="text-emerald-400">99.4% (Confirmed Flare Stack)</span>}
+                    </span>
+                  </div>
+
+                  <div className="h-2.5 w-full bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full transition-all duration-700 rounded-full"
+                      style={{
+                        width: activeLayers.length === 1 ? '18%' : activeLayers.includes('history') ? '99.4%' : '65%',
+                        backgroundColor: activeLayers.length === 1 ? '#f59e0b' : activeLayers.includes('history') ? '#10b981' : '#38bdf8',
+                        boxShadow: activeLayers.includes('history') ? '0 0 15px #10b981' : '0 0 15px #38bdf8'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Multi-Source Telemetry Breakdown Table */}
+                <div className="space-y-2 text-xs">
+                  <div className="p-2.5 rounded bg-white/[0.03] border border-white/10 flex justify-between items-center">
+                    <span className="text-slate-400">📡 Infrared Spectrum:</span>
+                    <span className="text-white font-bold">3.74 µm Band · 1,120°C</span>
+                  </div>
+
+                  <div className={`p-2.5 rounded transition-all border flex justify-between items-center ${
+                    activeLayers.includes('infrastructure') ? 'bg-sky-500/10 border-sky-400/40 text-sky-200' : 'bg-white/[0.01] border-white/5 text-slate-500'
+                  }`}>
+                    <span>🏭 GIS Cadastral Match:</span>
+                    <span className="font-bold">
+                      {activeLayers.includes('infrastructure') ? 'Deer Park Refinery (0m Offset)' : 'UNCHECKED'}
+                    </span>
+                  </div>
+
+                  <div className={`p-2.5 rounded transition-all border flex justify-between items-center ${
+                    activeLayers.includes('history') ? 'bg-emerald-500/10 border-emerald-400/40 text-emerald-200' : 'bg-white/[0.01] border-white/5 text-slate-500'
+                  }`}>
+                    <span>📅 180-Day Recurrence:</span>
+                    <span className="font-bold">
+                      {activeLayers.includes('history') ? '82.2% Night-Time Persistence' : 'UNCHECKED'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Operational Verdict Box */}
+                <div className={`p-4 rounded-lg border transition-all ${
+                  activeLayers.includes('history')
+                    ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
+                    : activeLayers.includes('infrastructure')
+                    ? 'bg-sky-950/40 border-sky-500/50 text-sky-200'
+                    : 'bg-amber-950/40 border-amber-500/50 text-amber-200'
+                }`}>
+                  <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">AUTOMATED OPERATIONAL VERDICT:</div>
+                  <div className="text-sm font-bold mb-1">
+                    {activeLayers.length === 1 && '⚠️ UNCLASSIFIED WARNING · HIGH FALSE ALARM RISK'}
+                    {activeLayers.includes('infrastructure') && !activeLayers.includes('history') && '🔍 IN-FACILITY HOTSPOT · PENDING RECURRENCE CHECK'}
+                    {activeLayers.includes('history') && '✓ AUTOMATIC SUPPRESSION: ROUTINE RELIEF FLARE'}
+                  </div>
+                  <p className="text-xs text-slate-300 font-sans leading-relaxed">
+                    {activeLayers.length === 1 && 'Raw satellite thermal data alone cannot distinguish a flare stack from an uncontained structural fire. Dispatching emergency teams without context causes costly false alarms.'}
+                    {activeLayers.includes('infrastructure') && !activeLayers.includes('history') && 'The heat source is confirmed inside Deer Park Refinery boundaries, but we must verify if this thermal emission is a routine operational flare or an emergency flare stack trip.'}
+                    {activeLayers.includes('history') && 'Coordinates match permitted flare stack #2 and active thermal persistence over 148 of 180 nights confirms routine relief flaring. Emergency dispatch is automatically silenced.'}
+                  </p>
+                </div>
+
+                {/* Interactive Step Navigation Controls */}
+                <div className="flex justify-between items-center pt-2 font-mono text-xs">
+                  {activeLayers.length === 1 && (
+                    <button
+                      onClick={() => setActiveLayers(['thermal', 'infrastructure'])}
+                      className="w-full py-2.5 rounded bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(6,182,212,0.3)] cursor-pointer"
+                    >
+                      Step 2: Apply Infrastructure Registry →
+                    </button>
+                  )}
+                  {activeLayers.includes('infrastructure') && !activeLayers.includes('history') && (
+                    <button
+                      onClick={() => setActiveLayers(['thermal', 'infrastructure', 'history'])}
+                      className="w-full py-2.5 rounded bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] cursor-pointer"
+                    >
+                      Step 3: Audit 180-Day Thermal Baseline →
+                    </button>
+                  )}
+                  {activeLayers.includes('history') && (
+                    <button
+                      onClick={() => setActiveLayers(['thermal'])}
+                      className="w-full py-2.5 rounded border border-white/20 bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                      ↺ Restart Resolution Demo
+                    </button>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      {/* BEAT 04: THE 5 SIGNATURES (WITH RESTORED VISUAL FLIR SENSOR VIEWPORT) */}
+      <section id="signatures" className="py-24 border-b border-white/[0.08] px-6 bg-[#05080E]">
+        <div className="max-w-5xl mx-auto space-y-10">
+          
+          <div>
+            <span className="font-mono text-xs text-cyan-400 uppercase tracking-widest font-semibold">
+              [ SIGNATURE PROFILES ]
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight mt-1">
+              Five distinct operational events.
+            </h2>
+            <p className="text-slate-400 text-sm max-w-xl mt-1">
+              How GeoFlare’s contextual model discriminates between industrial and environmental thermal events.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            {/* Left Column: Signature Selector List */}
+            <div className="lg:col-span-5 space-y-2">
+              {SIGNATURES.map((sig) => {
+                const isSelected = selectedSig.id === sig.id;
+                return (
+                  <button
+                    key={sig.id}
+                    onClick={() => setSelectedSig(sig)}
+                    className={`relative overflow-hidden w-full text-left p-4 rounded-lg transition-all border cursor-pointer ${
+                      isSelected
+                        ? 'bg-white/[0.06] border-cyan-400/50 text-white shadow-lg'
+                        : 'bg-white/[0.01] border-white/5 text-slate-400 hover:border-white/20'
+                    }`}
+                  >
+                    {isSelected && <div className="border-beam" />}
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-bold text-sm text-white">{sig.name}</span>
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold"
+                        style={{
+                          backgroundColor: `${sig.verdictColor}15`,
+                          color: sig.verdictColor,
+                          border: `1px solid ${sig.verdictColor}40`,
+                        }}
+                      >
+                        {sig.verdict}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-400">{sig.category}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Right Column: Visual FLIR Thermal Sensor Viewport + Clear Explanations */}
+            <div className="lg:col-span-7 p-6 sm:p-7 rounded-xl border border-white/10 bg-[#070D18] space-y-6">
+              
+              <div className="border-b border-white/10 pb-3 flex justify-between items-center font-mono text-xs">
+                <div>
+                  <span className="text-slate-500">SELECTED TARGET:</span>{' '}
+                  <span className="text-white font-bold">{selectedSig.name.toUpperCase()}</span>
+                </div>
+                <div className="text-slate-400">{selectedSig.sampleLocation}</div>
+              </div>
+
+              {/* Restored Visual FLIR Thermal Sensor Viewport */}
+              <div className="relative h-52 w-full rounded-lg border border-white/10 bg-black/80 overflow-hidden flex items-center justify-center">
+                
+                {/* Corner reticle HUD ticks */}
+                <div className="absolute top-2 left-2 text-cyan-500/50 font-mono text-[9px]">┌ FLIR-CH4</div>
+                <div className="absolute top-2 right-2 text-cyan-500/50 font-mono text-[9px]">┐ 3.74µm</div>
+                <div className="absolute bottom-2 left-2 text-cyan-500/50 font-mono text-[9px]">└ 14-BIT</div>
+                <div className="absolute bottom-2 right-2 text-cyan-500/50 font-mono text-[9px]">┘ 375M RES</div>
+
+                {/* Morphing FLIR Physical Ground Signature Viewports */}
+                {selectedSig.id === 'flare' && (
+                  <div className="relative flex items-center justify-center animate-flare-flicker">
+                    <div className="w-48 h-48 rounded-full bg-cyan-500/20 flir-heat-bloom" />
+                    <div className="absolute w-24 h-24 rounded-full bg-sky-400/50 flir-heat-bloom" />
+                    <div className="w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_25px_#ffffff] z-10 animate-ping absolute" />
+                    <div className="w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_20px_#ffffff] z-10" />
+                  </div>
+                )}
+
+                {selectedSig.id === 'wildfire' && (
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-64 h-32 rounded-[50%_40%_60%_30%] bg-red-600/35 flir-heat-bloom animate-heat-shimmer" />
+                    <div className="absolute w-44 h-20 rounded-[60%_30%_50%_40%] bg-amber-500/60 flir-heat-bloom" />
+                    <div className="absolute w-20 h-8 rounded-full bg-white blur-sm opacity-90" />
+                    {/* Drifting Ember Sparks */}
+                    <div className="absolute top-4 right-10 w-1.5 h-1.5 rounded-full bg-amber-400 animate-ember-float" />
+                    <div className="absolute top-10 right-16 w-1 h-1 rounded-full bg-red-400 animate-ember-float" style={{ animationDelay: '-0.7s' }} />
+                    <div className="absolute top-2 right-14 w-1.5 h-1.5 rounded-full bg-yellow-300 animate-ember-float" style={{ animationDelay: '-1.4s' }} />
+                  </div>
+                )}
+
+                {selectedSig.id === 'facility-fire' && (
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-56 h-36 border-2 border-red-500/60 border-dashed rounded-lg bg-red-950/40 p-2 flex items-center justify-center">
+                      <div className="w-40 h-24 rounded-md bg-red-500/45 flir-heat-bloom animate-pulse" />
+                      <div className="absolute w-24 h-14 rounded bg-orange-400/70 blur-md" />
+                      <div className="absolute w-6 h-6 rounded-full bg-white shadow-[0_0_25px_#ffffff] z-10" />
+                    </div>
+                  </div>
+                )}
+
+                {selectedSig.id === 'ag-burn' && (
+                  <div className="relative flex items-center justify-center w-full">
+                    <div className="w-72 h-10 rounded-full bg-amber-500/35 flir-heat-bloom animate-pulse" />
+                    <div className="absolute w-60 h-5 rounded-full bg-emerald-400/50 blur-sm" />
+                    <div className="absolute w-40 h-2.5 rounded-full bg-white opacity-80" />
+                  </div>
+                )}
+
+                {selectedSig.id === 'smelter' && (
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-40 h-40 rounded-full bg-purple-600/35 flir-heat-bloom animate-pulse" style={{ animationDuration: '2.2s' }} />
+                    <div className="absolute w-24 h-24 rounded-full bg-purple-400/65 blur-md" />
+                    <div className="absolute w-5 h-5 rounded-full bg-white shadow-[0_0_25px_#e9d5ff] z-10" />
+                  </div>
+                )}
+
+                <div className="hud-scanline" />
+
+                {/* Target Crosshairs */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
+                  <div className="w-28 h-28 border border-dashed border-cyan-400 rounded-full animate-spin-slow" />
+                  <div className="absolute w-44 h-[1px] bg-cyan-400" />
+                  <div className="absolute h-44 w-[1px] bg-cyan-400" />
+                </div>
+
+                {/* Dynamic Multi-Spectral Waveform Frequency Curve */}
+                <div className="absolute bottom-9 left-0 right-0 h-6 opacity-65 pointer-events-none px-4">
+                  <svg className="w-full h-full" viewBox="0 0 300 24" preserveAspectRatio="none">
+                    <path 
+                      d={
+                        selectedSig.id === 'flare'
+                          ? "M 0 12 Q 25 2, 50 22 T 100 2 T 150 22 T 200 2 T 250 22 T 300 12"
+                          : selectedSig.id === 'wildfire'
+                          ? "M 0 18 Q 40 4, 80 20 T 160 2 T 240 18 T 300 12"
+                          : selectedSig.id === 'facility-fire'
+                          ? "M 0 12 L 40 12 L 40 2 L 120 2 L 120 22 L 200 22 L 200 12 L 300 12"
+                          : selectedSig.id === 'ag-burn'
+                          ? "M 0 12 Q 75 8, 150 16 T 300 12"
+                          : "M 0 12 L 60 12 L 60 4 L 120 4 L 120 20 L 180 20 L 180 12 L 300 12"
+                      }
+                      fill="none" 
+                      stroke={selectedSig.verdictColor} 
+                      strokeWidth="1.5"
+                      className="transition-all duration-500"
+                    />
+                  </svg>
+                </div>
+
+                {/* Viewport Meta Legend */}
+                <div className="absolute bottom-3 left-3 bg-black/80 px-2.5 py-1 rounded border border-white/10 font-mono text-[10px] text-slate-300">
+                  PEAK TEMP: <span className="text-amber-400 font-bold">{selectedSig.temp}</span>
+                </div>
+                <div className="absolute bottom-3 right-3 bg-black/80 px-2.5 py-1 rounded border border-white/10 font-mono text-[10px] text-slate-300">
+                  RADIATIVE POWER: <span className="text-white font-bold">{selectedSig.power}</span>
+                </div>
+              </div>
+
+              {/* Explanatory Cards */}
+              <div className="space-y-4 text-xs">
+                <div>
+                  <div className="font-mono text-[11px] text-cyan-400 font-bold uppercase mb-1">
+                    The Ground Event:
+                  </div>
+                  <p className="text-slate-300 leading-relaxed font-sans text-sm">
+                    {selectedSig.summary}
+                  </p>
+                </div>
+
+                <div>
+                  <div className="font-mono text-[11px] text-cyan-400 font-bold uppercase mb-1">
+                    How GeoFlare Verifies It:
+                  </div>
+                  <p className="text-slate-300 leading-relaxed font-sans text-sm">
+                    {selectedSig.howItWorks}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded bg-black/50 border border-white/10 flex items-center justify-between font-mono text-xs">
+                <span className="text-slate-400">SYSTEM VERDICT:</span>
+                <span 
+                  className="font-bold px-2 py-0.5 rounded text-[11px]"
+                  style={{
+                    backgroundColor: `${selectedSig.verdictColor}20`,
+                    color: selectedSig.verdictColor,
+                    border: `1px solid ${selectedSig.verdictColor}40`
+                  }}
+                >
+                  {selectedSig.verdict}
                 </span>
               </div>
-              <div>
-                <span className="text-[10px] text-white/50 font-mono uppercase tracking-wider block">
-                  Position
-                </span>
-                <span className="text-white font-medium">
-                  {selectedIncident.lat.toFixed(3)}, {selectedIncident.lng.toFixed(3)}
-                </span>
+
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      {/* BEAT 05: GROUNDED PLATFORM RADAR CONSOLE PREVIEW */}
+      <section className="py-24 border-b border-white/[0.08] px-6 bg-[#04070C]">
+        <div className="max-w-5xl mx-auto space-y-10">
+          
+          <div className="text-center space-y-2 max-w-2xl mx-auto">
+            <span className="font-mono text-xs text-cyan-400 uppercase tracking-widest font-semibold">
+              [ PLATFORM RADAR CONSOLE ]
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+              An operational console built for clarity.
+            </h2>
+            <p className="text-slate-400 text-sm">
+              Instead of raw, unparsed telemetry tables, operators inspect validated event cards with spatial context overlays.
+            </p>
+          </div>
+
+          {/* Console Web Container */}
+          <div className="rounded-xl border border-white/15 bg-[#070C16] shadow-2xl overflow-hidden">
+            
+            {/* Window Top Bar */}
+            <div className="h-10 bg-white/[0.03] border-b border-white/10 px-4 flex items-center justify-between">
+              <div className="flex gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
+                <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
+                <div className="w-2.5 h-2.5 rounded-full bg-white/20" />
               </div>
+              <div className="font-mono text-[11px] text-slate-400">
+                geoflare-operations // regional-inspector
+              </div>
+              <div className="font-mono text-[11px] text-emerald-400 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>32 ANOMALIES AUDITED</span>
+              </div>
+            </div>
+
+            {/* Console Body Preview with Rich Multi-Point Radar */}
+            <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+              
+              {/* Radar Graphic Viewport with Anduril 360° Radar Sweep Beam & HUD Scanlines */}
+              <div className="md:col-span-7 h-64 rounded bg-black/80 border border-white/10 relative overflow-hidden flex items-center justify-center">
+                
+                {/* 360-Degree Sweeping Radar Beam */}
+                <div className="radar-sweep-beam" />
+                <div className="hud-scanline" />
+
+                {/* Concentric Radar Rings */}
+                <div className="absolute w-[200px] h-[200px] border border-cyan-500/20 rounded-full pointer-events-none" />
+                <div className="absolute w-[140px] h-[140px] border border-cyan-500/25 rounded-full pointer-events-none" />
+                <div className="absolute w-[80px] h-[80px] border border-cyan-500/30 rounded-full pointer-events-none" />
+                <div className="absolute w-full h-[1px] bg-cyan-500/15 pointer-events-none" />
+                <div className="absolute h-full w-[1px] bg-cyan-500/15 pointer-events-none" />
+
+                {/* Active Target Event #8092 */}
+                <div className="absolute top-[35%] left-[55%] group cursor-pointer z-20">
+                  <div className="w-3 h-3 bg-cyan-400 rounded-full animate-ping" />
+                  <div className="w-3 h-3 bg-cyan-400 rounded-full absolute inset-0" />
+                  <div className="absolute left-4 top-0 bg-black/90 border border-cyan-500/40 text-[9px] font-mono px-2 py-0.5 rounded whitespace-nowrap text-white">
+                    EVENT #8092 (ROUTINE FLARE)
+                  </div>
+                </div>
+
+                {/* Audited Secondary Radar Points (Scatter of Cleared Facilities) */}
+                <div className="absolute top-[25%] left-[30%] w-2 h-2 bg-emerald-400/80 rounded-full" />
+                <div className="absolute top-[65%] left-[22%] w-2 h-2 bg-slate-500/70 rounded-full" />
+                <div className="absolute top-[70%] left-[68%] w-2 h-2 bg-emerald-400/80 rounded-full" />
+                <div className="absolute top-[45%] left-[78%] w-2 h-2 bg-slate-500/70 rounded-full" />
+                <div className="absolute top-[20%] left-[72%] w-2 h-2 bg-amber-400/80 rounded-full" />
+                <div className="absolute top-[80%] left-[42%] w-2 h-2 bg-slate-500/70 rounded-full" />
+                <div className="absolute top-[32%] left-[18%] w-2 h-2 bg-emerald-400/80 rounded-full" />
+                <div className="absolute top-[58%] left-[82%] w-2 h-2 bg-slate-500/70 rounded-full" />
+
+                <div className="absolute top-3 left-3 font-mono text-[10px] text-slate-400 bg-black/60 px-2 py-1 rounded border border-white/10">
+                  SECTOR: GULF COAST INDUSTRIAL
+                </div>
+                <div className="absolute bottom-3 right-3 font-mono text-[10px] text-cyan-400 bg-black/60 px-2 py-1 rounded border border-cyan-500/30">
+                  MONITORING 32 SECTORS
+                </div>
+              </div>
+
+              {/* Sample Record Preview */}
+              <div className="md:col-span-5 space-y-3 font-mono text-xs">
+                <div className="text-slate-400 text-[10px] uppercase">LATEST RESOLVED ANOMALY</div>
+                <div className="p-3.5 rounded bg-white/[0.02] border border-white/10 space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="font-bold text-white">EVENT #8092</span>
+                    <span className="text-cyan-400 font-bold">ROUTINE FLARE</span>
+                  </div>
+                  <div className="text-slate-300 text-[11px]">Baton Rouge Refinery Complex</div>
+                  <div className="text-slate-400 text-[10px]">Confidence: 99.4% · Alert Suppressed</div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => navigate('/command-center')}
+                    className="w-full py-2.5 rounded bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-xs tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(6,182,212,0.35)] cursor-pointer"
+                  >
+                    Open Live Operations Terminal →
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      {/* BEAT 06: CLEAN, SOBER FOOTER / EXIT */}
+      <footer className="py-24 px-6 bg-gradient-to-t from-cyan-950/40 via-[#03060A] to-[#03060A] border-t border-white/10 relative overflow-hidden">
+        
+        {/* Orbital Atmospheric Horizon Glow Spill (Cosmos & Titan Gate Signature) */}
+        <div 
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[350px] rounded-[100%] opacity-25 pointer-events-none blur-3xl"
+          style={{ background: 'radial-gradient(circle, rgba(14, 165, 233, 0.45) 0%, transparent 70%)' }}
+        />
+
+        {/* Background Grid Accent */}
+        <div 
+          className="absolute inset-0 pointer-events-none opacity-10"
+          style={{
+            backgroundImage: `
+              linear-gradient(to right, rgba(56, 189, 248, 0.1) 1px, transparent 1px),
+              linear-gradient(to bottom, rgba(56, 189, 248, 0.1) 1px, transparent 1px)
+            `,
+            backgroundSize: '40px 40px'
+          }}
+        />
+
+        <div className="max-w-6xl mx-auto space-y-16 relative z-10">
+          
+          {/* Main Heroic CTA */}
+          <div className="max-w-2xl mx-auto text-center space-y-6">
+            <span className="font-mono text-xs uppercase tracking-widest text-cyan-400 border border-cyan-500/30 px-3 py-1 rounded bg-cyan-950/60">
+              OPERATIONAL READINESS
+            </span>
+            <h2 className="text-3xl sm:text-5xl font-bold text-white tracking-tight">
+              Turn raw heat into clear operational decisions.
+            </h2>
+            <p className="text-slate-400 text-sm sm:text-base leading-relaxed font-light">
+              GeoFlare combines global satellite coverage with fine-grained local infrastructure registries.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => navigate('/command-center')}
+                className="px-8 py-4 rounded bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_30px_rgba(6,182,212,0.4)] cursor-pointer"
+              >
+                Enter Operations Console →
+              </button>
             </div>
           </div>
 
-          <div className="text-[10px] text-white/40 font-mono pt-1">
-            SOURCE: NASA FIRMS &bull; thermal anomaly, not a confirmed fire
+          {/* Professional 4-Column Footer Navigation Links */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pt-12 border-t border-white/10 font-mono text-xs text-slate-400 text-left">
+            
+            <div className="space-y-3">
+              <div className="font-bold text-white text-sm tracking-wider">GEOFLARE AI</div>
+              <p className="text-slate-500 text-[11px] leading-relaxed font-sans">
+                Autonomous orbital surveillance and satellite thermal intelligence platform for industrial infrastructure.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="font-bold text-white text-xs uppercase tracking-wider mb-3">PLATFORM</div>
+              <div><button onClick={() => navigate('/command-center')} className="hover:text-cyan-400 transition-colors cursor-pointer">Command Center</button></div>
+              <div><button onClick={() => navigate('/map-explorer')} className="hover:text-cyan-400 transition-colors cursor-pointer">Map Explorer</button></div>
+              <div><button onClick={() => navigate('/mission-brief')} className="hover:text-cyan-400 transition-colors cursor-pointer">Mission Brief</button></div>
+              <div><button onClick={() => navigate('/thermal-history')} className="hover:text-cyan-400 transition-colors cursor-pointer">Thermal History</button></div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="font-bold text-white text-xs uppercase tracking-wider mb-3">SENSOR DATA SOURCES</div>
+              <div className="text-slate-300">NOAA-20 VIIRS (3.74µm)</div>
+              <div className="text-slate-300">MODIS Aqua & Terra</div>
+              <div className="text-slate-300">Sentinel-3 SLSTR</div>
+              <div className="text-slate-300">Copernicus EMS</div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="font-bold text-white text-xs uppercase tracking-wider mb-3">SYSTEM STATUS</div>
+              <div className="flex items-center gap-2 text-emerald-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Orbital Downlink: Active</span>
+              </div>
+              <div className="text-slate-400">API Latency: 240ms</div>
+              <div className="text-slate-400">GIS Alignment: Sub-Meter</div>
+            </div>
+
           </div>
 
-          <button
-            onClick={() => navigate(`/fire/${selectedIncident.id}`)}
-            className="w-full py-2 rounded-lg bg-[#3DB7D9] hover:bg-[#54C8E6] text-[#05080D] font-bold tracking-wider text-[11px] transition flex items-center justify-center space-x-1.5"
-          >
-            <span>FULL ANALYSIS</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
+          <div className="pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-slate-500 gap-4">
+            <div>GEOFLARE AI · AUTONOMOUS ORBITAL SURVEILLANCE PLATFORM</div>
+            <div>COMPLIANT WITH NOAA FIRMS · SENTINEL-2 SLSTR</div>
+          </div>
 
-      {/* BOTTOM FOOTER */}
-      <footer className="mt-auto relative z-30 pb-6 px-8 flex items-center justify-between w-full pointer-events-none font-mono text-[10px] text-white/60 tracking-widest uppercase">
-        <div className="flex items-center space-x-6">
-          <span>
-            {isLoading
-              ? 'LOADING LIVE DETECTIONS...'
-              : error
-                ? `FEED ERROR: ${error}`
-                : `${hotspots.length} EVENTS FROM ${pixelCount} SATELLITE DETECTIONS`}
-          </span>
-          <span>&bull;</span>
-          <span>NASA FIRMS &bull; VIIRS / MODIS</span>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <span>INDUSTRIAL FIREWATCH AI</span>
-          <span>:ONLINE</span>
         </div>
       </footer>
+
+      {/* Satellite Telemetry Intelligence Modal */}
+      <SatelliteDossierModal
+        dossier={selectedSatellite}
+        onClose={() => setSelectedSatellite(null)}
+      />
+
     </div>
   );
-};
+}
+
+export const LandingPage = GeoFlareLanding;

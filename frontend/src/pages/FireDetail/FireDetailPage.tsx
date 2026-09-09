@@ -162,21 +162,21 @@ export const FireDetailPage: React.FC = () => {
           Step 1 — Is this a real fire?
         </span>
         {validity ? (
-          <div className={`rounded-lg border p-4 space-y-3 ${VERDICT_TONE[validity.verdict]}`}>
+          <div className={`rounded-lg border p-4 space-y-3 ${(VERDICT_TONE as Record<string, string>)[validity.verdict]}`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="flex items-center gap-2 text-lg font-bold font-mono">
-                {VERDICT_ICON[validity.verdict]}
-                {VERDICT_LABEL[validity.verdict]}
+                {(VERDICT_ICON as Record<string, React.ReactNode>)[validity.verdict]}
+                {(VERDICT_LABEL as Record<string, string>)[validity.verdict]}
               </span>
               <span className="font-mono text-sm">{validity.confidencePct}% likely genuine</span>
             </div>
             <p className="text-[11px] leading-relaxed text-slate-200 font-sans">
-              {VERDICT_BLURB[validity.verdict]}
+              {(VERDICT_BLURB as Record<string, string>)[validity.verdict]}
             </p>
 
             {validity.concerns.length > 0 && (
               <ul className="space-y-1">
-                {validity.concerns.map((c) => (
+                {validity.concerns.map((c: string) => (
                   <li key={c} className="text-[10px] font-mono text-slate-300">
                     • {concernText(c)}
                   </li>
@@ -189,7 +189,7 @@ export const FireDetailPage: React.FC = () => {
                 Evidence ({validity.reasoningSteps.length} checks) · model {validity.modelVersion}
               </summary>
               <div className="mt-2 space-y-1.5">
-                {validity.reasoningSteps.map((s) => (
+                {validity.reasoningSteps.map((s: any) => (
                   <div key={s.stepIndex} className="text-slate-300">
                     <span className="text-[#A7B4C1]">{s.label}:</span> {s.detail}
                   </div>

@@ -8,11 +8,11 @@ import { AnalyticsPage } from './pages/Analytics/AnalyticsPage';
 import { CommandCenterPage } from './pages/CommandCenter/CommandCenterPage';
 import { FacilityWatchPage } from './pages/FacilityWatch/FacilityWatchPage';
 import { FireDetailPage } from './pages/FireDetail/FireDetailPage';
+import { GlobalEarthPage } from './pages/GlobalEarth/GlobalEarthPage';
 import { IncidentAnalysisPage } from './pages/IncidentAnalysis/IncidentAnalysisPage';
 import { IncidentDetailsPage } from './pages/IncidentDetails/IncidentDetailsPage';
 import { IncidentsPage } from './pages/Incidents/IncidentsPage';
 import { LandingPage } from './pages/Landing/LandingPage';
-import { MapExplorerPage } from './pages/MapExplorer/MapExplorerPage';
 import { MethodologyPage } from './pages/Methodology/MethodologyPage';
 import { MissionBriefPage } from './pages/MissionBrief/MissionBriefPage';
 import { RiskImpactPage } from './pages/RiskImpact/RiskImpactPage';
@@ -32,12 +32,13 @@ const AppContent: React.FC = () => {
       <div className="flex-1 overflow-y-auto">
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/global-earth" element={<GlobalEarthPage />} />
           <Route path="/command-center" element={<CommandCenterPage />} />
           <Route path="/fire/:fireId" element={<FireDetailPage />} />
           <Route path="/incident/:incidentId" element={<IncidentAnalysisPage />} />
           <Route path="/incidents/:id" element={<IncidentDetailsPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />
-          <Route path="/map-explorer" element={<MapExplorerPage />} />
+          <Route path="/map-explorer" element={<GlobalEarthPage />} />
           <Route path="/thermal-history" element={<ThermalHistoryPage />} />
           <Route path="/weather-analysis" element={<WeatherAnalysisPage />} />
           <Route path="/facility-watch" element={<FacilityWatchPage />} />

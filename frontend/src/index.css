@@ -85,6 +85,19 @@
   animation: high-risk-pulse 2.2s ease-in-out infinite;
 }
 
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 25s linear infinite;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -128,3 +141,144 @@
 .maplibregl-ctrl-group button span {
   filter: invert(1) !important;
 }
+
+/* ==========================================================================
+   HIGH-TECH DEFENSE & AEROSPACE ANIMATION ENGINE
+   ========================================================================== */
+
+/* 1. ANTIMETAL BORDER BEAM: Traveling laser beam around active cards */
+@keyframes border-beam {
+  100% {
+    offset-distance: 100%;
+  }
+}
+.border-beam {
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-radius: inherit;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 10;
+}
+.border-beam::after {
+  content: "";
+  position: absolute;
+  aspect-ratio: 1;
+  width: 120px;
+  background: linear-gradient(to left, #38bdf8, #0ea5e9, transparent);
+  offset-path: rect(0 auto auto 0 round 12px);
+  animation: border-beam 4s linear infinite;
+}
+
+/* 2. ANDURIL RADAR SWEEP: 360-degree rotating radar scanline */
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.radar-sweep-beam {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: conic-gradient(from 0deg at 50% 50%, rgba(56, 189, 248, 0.35) 0deg, transparent 60deg, transparent 360deg);
+  animation: radar-sweep 4s linear infinite;
+  pointer-events: none;
+}
+
+/* 3. SENSOR HEAT SHIMMER: Makes thermal blob look like hot gas / FLIR bloom */
+@keyframes heat-drift {
+  0%, 100% { transform: scale(1) translate(0, 0); opacity: 0.75; }
+  33% { transform: scale(1.08) translate(-2px, 1px); opacity: 0.9; }
+  66% { transform: scale(0.95) translate(2px, -1px); opacity: 0.65; }
+}
+.flir-heat-bloom {
+  animation: heat-drift 3.2s ease-in-out infinite;
+  filter: blur(18px);
+}
+
+/* 4. ANDURIL HUD SCANLINE: Subtle CRT/Satellite raster scanning down */
+@keyframes scanline-drift {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(1000%); }
+}
+.hud-scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.4), transparent);
+  animation: scanline-drift 6s linear infinite;
+  pointer-events: none;
+}
+
+/* 5. ATMOSPHERIC HEAT SHIMMER (For Raw Satellite & Sensor Views) */
+@keyframes atmospheric-shimmer {
+  0%, 100% {
+    transform: scale(1) translate(0, 0);
+    filter: blur(20px) brightness(1);
+  }
+  33% {
+    transform: scale(1.06) translate(-2px, 1.5px);
+    filter: blur(24px) brightness(1.15);
+  }
+  66% {
+    transform: scale(0.96) translate(2px, -1.5px);
+    filter: blur(18px) brightness(0.95);
+  }
+}
+
+.animate-heat-shimmer {
+  animation: atmospheric-shimmer 3.6s ease-in-out infinite;
+}
+
+/* 6. PUSHBROOM SATELLITE SENSOR SCANLINE */
+@keyframes sensor-scan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  15% { opacity: 0.8; }
+  85% { opacity: 0.8; }
+  100% { transform: translateY(500%); opacity: 0; }
+}
+
+.animate-sensor-scan {
+  animation: sensor-scan 4s linear infinite;
+}
+
+/* 7. CAD FENCE VECTOR DRAWING ANIMATION */
+@keyframes draw-cad-boundary {
+  from {
+    stroke-dashoffset: 600;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-cad-draw {
+  stroke-dasharray: 600;
+  animation: draw-cad-boundary 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 8. FLARE HIGH-FREQUENCY MICRO-FLICKER (12Hz Micro-Flicker) */
+@keyframes flare-microflicker {
+  0%, 100% { opacity: 0.95; transform: scale(1); }
+  25% { opacity: 0.82; transform: scale(0.98); }
+  50% { opacity: 1; transform: scale(1.03); }
+  75% { opacity: 0.88; transform: scale(0.99); }
+}
+
+.animate-flare-flicker {
+  animation: flare-microflicker 0.18s ease-in-out infinite;
+}
+
+/* 9. WILDFIRE DRIFTING EMBER SPARKS */
+@keyframes ember-float {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.9; }
+  100% { transform: translate(-28px, -42px) scale(0.2); opacity: 0; }
+}
+
+.animate-ember-float {
+  animation: ember-float 2.2s ease-out infinite;
+}
+
+

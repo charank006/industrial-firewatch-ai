@@ -10,7 +10,6 @@ import {
 import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
-import { ActiveFireBar } from '../../components/intelligence/ActiveFireBar';
 
 const HISTORICAL_FRP_DATA = [
   { time: 'Jul 01', frp: 15.2, baseline: 15.0 },
@@ -24,30 +23,17 @@ const HISTORICAL_FRP_DATA = [
 export const IncidentDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { hotspots, selectFacilityById, isLoading } = useIntelligence();
+  const { hotspots, selectFacilityById } = useIntelligence();
 
-  // `hotspots[0]` is undefined on the first render in api mode, and every
-  // `incident.<field>` below then threw - blanking the whole app, not just
-  // this page.
   const incident = hotspots.find((h) => h.id === id) || hotspots[0];
 
   const handleFacilityClick = () => {
-    if (!incident?.nearestFacilityId) return;
     selectFacilityById(incident.nearestFacilityId);
     navigate(`/facility-watch?facilityId=${incident.nearestFacilityId}`);
   };
 
-  if (!incident) {
-    return (
-      <div className="min-h-screen bg-[#050A12] p-6 font-mono text-xs text-[#A7B4C5]">
-        {isLoading ? 'Loading detections…' : `No detection ${id ?? ''} in the current view.`}
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#050A12] p-4 sm:p-6 space-y-6 font-sans text-[#F5F7FA]">
-      <ActiveFireBar section="Detection record" />
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between border-b border-[#203246] pb-4 font-mono text-xs">
         <button

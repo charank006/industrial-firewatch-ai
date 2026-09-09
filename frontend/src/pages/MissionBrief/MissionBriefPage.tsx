@@ -25,7 +25,7 @@ export const MissionBriefPage: React.FC = () => {
           <span>OPERATIONAL MISSION BRIEF</span>
         </div>
         <h1 className="text-3xl font-bold tracking-tight text-white">
-          FireWatch AI Mission & Classification Philosophy
+          GeoFlare AI Mission & Classification Philosophy
         </h1>
         <p className="text-sm text-[#A7B4C1] max-w-3xl leading-relaxed">
           Satellite thermal observations are combined with industrial GIS context, land cover and historical activity to determine whether a thermal anomaly is routine or potentially dangerous.

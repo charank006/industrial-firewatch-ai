@@ -147,7 +147,7 @@ INDUSTRIAL SITES MAPPED IN OPENSTREETMAP WITHIN 1 KM OF A DETECTED FIRE
               <div className="p-2.5 bg-[#050A12] border border-[#203246] rounded">
                 <span className="text-[9px] text-[#A7B4C5] block uppercase">Closest approach</span>
                 <span className="text-sm font-bold text-[#28C76F]">
-                  {activeFac.nearestDistanceM === null
+                  {activeFac.nearestDistanceM == null
                     ? '—'
                     : activeFac.nearestDistanceM === 0
                     ? 'inside site'
@@ -168,7 +168,7 @@ INDUSTRIAL SITES MAPPED IN OPENSTREETMAP WITHIN 1 KM OF A DETECTED FIRE
               Detections that put this site on the list
             </span>
             <div className="flex flex-wrap gap-2">
-              {activeFac.fireEventIds.map((fireId) => (
+              {(activeFac.fireEventIds ?? []).map((fireId) => (
                 <button
                   key={fireId}
                   onClick={() => navigate(`/fire/${fireId}`)}

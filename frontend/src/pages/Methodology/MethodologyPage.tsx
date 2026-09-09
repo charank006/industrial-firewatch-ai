@@ -11,7 +11,7 @@ export const MethodologyPage: React.FC = () => {
           <span>TECHNICAL DOCUMENTATION</span>
         </div>
         <h1 className="text-3xl font-bold tracking-tight text-white">
-          FireWatch AI Classification & Decision Methodology
+          GeoFlare AI Classification & Decision Methodology
         </h1>
         <p className="text-sm text-[#A7B4C1] max-w-2xl leading-relaxed">
           Detailed technical specification of VIIRS 375m thermal anomaly ingestion, GIS spatial overlays, 180-day temporal baseline evaluation, and deterministic Beta classification logic.
