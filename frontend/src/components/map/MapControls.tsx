@@ -33,7 +33,7 @@ export const MapControls: React.FC<MapControlsProps> = ({
 
       {/* Popout Panel */}
       {isOpen && (
-        <div className="w-64 bg-[#05080E]/95 border border-white/10 rounded-lg p-3 shadow-2xl space-y-3 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150 text-slate-200">
+        <div className="absolute top-full mt-2 right-0 w-64 bg-[#05080E]/95 border border-white/15 rounded-xl p-3.5 shadow-2xl space-y-3 backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 duration-150 text-slate-200 z-50">
           
           {/* Map Base Mode Switcher */}
           <div className="space-y-1">

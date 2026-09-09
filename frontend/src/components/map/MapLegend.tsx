@@ -15,12 +15,16 @@ const SHORT_LABEL: Partial<Record<EventClassification, string>> = {
   'Unknown Anomaly': 'Unknown',
 };
 
-export const MapLegend: React.FC = () => {
-  const [isExpanded, setIsExpanded] = useState<boolean>(true);
+interface MapLegendProps {
+  className?: string;
+}
+
+export const MapLegend: React.FC<MapLegendProps> = ({ className = 'relative' }) => {
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const entries = Object.entries(CLASS_COLOR) as [EventClassification, string][];
 
   return (
-    <div className="absolute bottom-3 left-3 z-[1000] font-mono text-[11px] text-slate-300">
+    <div className={`${className} z-30 font-mono text-[11px] text-slate-300`}>
       {isExpanded ? (
         <div className="p-2.5 bg-[#081019]/95 border border-[#253340] rounded-lg backdrop-blur-md shadow-xl space-y-2 max-w-xs animate-in fade-in slide-in-from-bottom-2 duration-150">
           <div

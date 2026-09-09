@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { classColorMatchExpression } from '../../utils/classColors';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { formatDisplayClassification } from '../intelligence/SituationRail';
 import {
   facilitiesToGeoJSON,
   hotspotsToGeoJSON,
@@ -107,7 +108,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         </div>
 
         <div style="font-size: 13px; font-weight: 700; color: #ffffff; margin-bottom: 6px; letter-spacing: 0.02em;">
-          ${(incident.classification || 'UNKNOWN').replace(/_/g, ' ').toUpperCase()}
+          ${(formatDisplayClassification(incident.classification) || 'MONITORED HEAT POINT').toUpperCase()}
         </div>
 
         <div style="background: #080e14; border: 1px solid #1e2c3a; border-radius: 5px; padding: 6px 8px; margin-bottom: 6px;">
@@ -446,8 +447,9 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       const executeFly = () => {
         map.flyTo({
           center: [selectedIncident.lng, selectedIncident.lat],
-          zoom: 9.8,
-          duration: 1200,
+          zoom: 11.5,
+          pitch: 25,
+          duration: 1400,
           essential: true,
         });
         showIncidentPopup(selectedIncident);

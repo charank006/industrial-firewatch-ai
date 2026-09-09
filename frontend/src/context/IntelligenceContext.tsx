@@ -475,7 +475,9 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const metrics = useMemo<SituationMetrics>(() => {
     const totalDetected = hotspots.length;
-    const highPriorityCount = hotspots.filter((h) => h.severity === 'HIGH' || h.severity === 'CRITICAL').length;
+    const highPriorityCount = hotspots.filter(
+      (h) => (h.riskScore ?? 0) >= 70 || h.severity === 'CRITICAL'
+    ).length;
     const mediumPriorityCount = hotspots.filter((h) => h.severity === 'MEDIUM').length;
     const lowPriorityCount = hotspots.filter((h) => h.severity === 'LOW').length;
     const sumFrp = hotspots.reduce((acc, h) => acc + h.frpMw, 0);
@@ -519,7 +521,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const selectIncidentById = (id: string) => {
     const found = hotspots.find((h) => h.id === id);
     if (found) {
-      setSelectedIncident(found);
+      setSelectedIncident({ ...found });
       setIsDrawerOpen(true);
       const fac = facilities.find((f) => f.id === found.nearestFacilityId);
       if (fac) setSelectedFacility(fac);

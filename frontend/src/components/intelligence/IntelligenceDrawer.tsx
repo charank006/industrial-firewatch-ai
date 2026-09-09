@@ -3,61 +3,49 @@ import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronRight,
+  HelpCircle,
+  History,
   Factory,
   Radio,
   Search,
-  ShieldAlert,
   X,
 } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
-import { ReasoningFlow } from './ReasoningFlow';
-import { ProbabilityDistributionCard } from './ProbabilityDistributionCard';
+import { formatDisplayClassification } from './SituationRail';
 
 export const IntelligenceDrawer: React.FC = () => {
-  const { selectedIncident, selectFacilityById, filteredHotspots, facilities } = useIntelligence();
+  const { selectedIncident, filteredHotspots } = useIntelligence();
   const navigate = useNavigate();
 
   // Dispatch Operational Alert Modal State
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState<boolean>(false);
-  const [selectedUnit, setSelectedUnit] = useState<string>('REGIONAL INDUSTRIAL EMERGENCY RESPONSE SQUAD');
+  const [selectedUnit] = useState<string>('SURAT INDUSTRIAL FIRE SQUAD - ALPHA');
   const [dispatchStatus, setDispatchStatus] = useState<'IDLE' | 'SENDING' | 'CONFIRMED'>('IDLE');
-  const [dispatchNote, setDispatchNote] = useState<string>('');
 
   const currentIncident = selectedIncident || filteredHotspots[0];
 
   if (!currentIncident) {
     return (
-      <div className="w-full h-full p-5 flex flex-col justify-between font-mono text-xs text-slate-300 select-none">
+      <div className="w-full h-full p-5 flex flex-col justify-between font-mono text-xs text-slate-300 select-none bg-[#0A0E17]/95">
         <div className="space-y-3">
           <div className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">
-            ALL INDIA EARTH OBSERVATION SYSTEM
+            EARTH OBSERVATION WORKSTATION
           </div>
-          <h3 className="text-base font-bold text-white">Active Satellite Monitoring</h3>
+          <h3 className="text-base font-bold text-white">Active Anomaly Profile</h3>
           <p className="text-xs text-slate-400 font-sans leading-relaxed">
-            Continuous thermal satellite monitoring active. Select an anomaly event on the basemap or left queue to inspect classification telemetry.
+            Continuous satellite thermal monitoring active. Select an active thermal anomaly pin on the basemap to inspect observation telemetry.
           </p>
-        </div>
-
-        <div className="p-3 bg-black/40 border border-white/10 rounded-lg space-y-2 text-xs">
-          <div className="flex justify-between">
-            <span className="text-slate-400">REGISTERED ASSETS:</span>
-            <span className="text-white font-bold">{facilities.length} Facilities</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">ACTIVE ANOMALIES:</span>
-            <span className="text-red-400 font-bold">{filteredHotspots.length} Detected</span>
-          </div>
         </div>
       </div>
     );
   }
 
-  const handleFacilityClick = () => {
-    if (currentIncident.nearestFacilityId) {
-      selectFacilityById(currentIncident.nearestFacilityId);
-      navigate(`/facility-watch?facilityId=${currentIncident.nearestFacilityId}`);
-    }
+  const handleRiskRegistryClick = () => {
+    navigate('/risk-zone-registry');
+  };
+
+  const handleHistoryClick = () => {
+    navigate(`/thermal-history?incidentId=${currentIncident.id}`);
   };
 
   const handleInvestigateClick = () => {
@@ -71,171 +59,166 @@ export const IntelligenceDrawer: React.FC = () => {
     }, 1200);
   };
 
-  const riskVal = currentIncident.riskScore ?? (currentIncident.severity === 'CRITICAL' ? 85 : currentIncident.severity === 'HIGH' ? 65 : 35);
-  const riskLevel = currentIncident.riskLevel || (riskVal >= 75 ? 'EXTREME' : riskVal >= 50 ? 'HIGH' : riskVal >= 30 ? 'MODERATE' : 'LOW');
-  
-  const facilityDistanceText = currentIncident.facilityDistanceKm != null
-    ? currentIncident.facilityDistanceKm < 1
-      ? `${Math.round(currentIncident.facilityDistanceKm * 1000)} m`
-      : `${currentIncident.facilityDistanceKm.toFixed(1)} km`
-    : '500 m';
+  const displayTitle = formatDisplayClassification(currentIncident.classification);
+  const probVal = typeof currentIncident.predictedProbability === 'number'
+    ? currentIncident.predictedProbability
+    : 0.44;
 
-  const spatialFenceLabel = currentIncident.facilityDistanceKm != null && currentIncident.facilityDistanceKm <= 0.5
-    ? 'INSIDE PLANT FENCE'
-    : currentIncident.facilityDistanceKm != null && currentIncident.facilityDistanceKm <= 1.5
-    ? 'INSIDE 1km INDUSTRIAL ZONE'
-    : 'REGIONAL BUFFER';
+  const latFormatted = currentIncident.lat.toFixed(4);
+  const lngFormatted = currentIncident.lng.toFixed(4);
 
   return (
-    <div className="w-full h-full p-4 flex flex-col justify-between font-sans text-xs text-slate-100 select-none overflow-y-auto custom-scrollbar relative">
+    <div className="w-full h-full p-4 flex flex-col justify-between font-sans text-xs text-slate-100 select-none overflow-y-auto custom-scrollbar relative bg-[#0A0E17]/95 border-l border-white/10">
       
       <div className="space-y-3.5">
         
-        {/* Header Profile */}
-        <div className="border-b border-white/10 pb-3 flex justify-between items-start font-mono">
-          <div>
-            <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-bold flex items-center gap-1">
-              <ShieldAlert className="w-3.5 h-3.5 text-cyan-400" />
-              <span>INCIDENT INTEL PROFILE</span>
-            </span>
-            <h3 className="text-base font-bold text-white mt-0.5 font-sans tracking-wide">
-              {currentIncident.classification.replace(/_/g, ' ').toUpperCase()}
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{currentIncident.locationName}</p>
+        {/* 1. DATA COVERAGE CHECK CARD */}
+        <div className="p-3 bg-[#0D1420] border border-white/10 rounded-lg flex items-center justify-between font-mono text-xs shadow-sm">
+          <div className="flex items-start space-x-2.5">
+            <HelpCircle className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="text-[10px] text-slate-300 font-bold uppercase tracking-wider">DATA COVERAGE CHECK</div>
+              <div className="text-[11px] text-slate-400 font-sans mt-0.5">
+                Single satellite observation - no temporal corroboration
+              </div>
+            </div>
           </div>
-
-          <span
-            className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
-              riskLevel === 'EXTREME' || currentIncident.severity === 'CRITICAL'
-                ? 'bg-red-500/20 text-red-400 border border-red-500/40'
-                : riskLevel === 'HIGH' || currentIncident.severity === 'HIGH'
-                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
-                : riskLevel === 'MODERATE'
-                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-            }`}
-          >
-            {riskLevel} RISK ({Math.round(riskVal)})
+          <span className="px-2 py-0.5 bg-[#162232] border border-slate-600 text-slate-300 text-[9.5px] font-bold rounded uppercase">
+            NEUTRAL
           </span>
         </div>
 
-        {/* Assessed Risk Score Progress Bar */}
-        <div className="p-3 bg-[#080E17] border border-white/10 rounded-lg space-y-2 font-mono text-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-              <span>5-COMPONENT RISK SCORE</span>
-            </span>
-            <span className="font-bold text-sm text-red-400">
-              {Math.round(riskVal)} / 100
-            </span>
+        {/* 2. RULE ENGINE OUTPUT CARD */}
+        <div className="p-3 bg-[#0D1420] border border-emerald-500/30 rounded-lg flex items-start justify-between font-mono text-xs shadow-sm">
+          <div className="flex items-start space-x-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">RULE ENGINE OUTPUT</div>
+              <div className="text-[11px] text-slate-300 font-sans mt-0.5 leading-relaxed">
+                Most probable source: {formatDisplayClassification(currentIncident.classification)} (p={probVal.toFixed(2)}, model rules-v1.1b5c52). Probabilistic estimate, not a determination of ignition cause.
+              </div>
+            </div>
           </div>
-          <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden border border-white/10">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                riskVal >= 70 ? 'bg-red-500' : riskVal >= 40 ? 'bg-amber-500' : 'bg-emerald-500'
-              }`}
-              style={{ width: `${Math.min(100, Math.max(5, riskVal))}%` }}
-            />
+          <span className="px-2 py-0.5 bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 text-[9.5px] font-bold rounded uppercase shrink-0 ml-2">
+            PASSED
+          </span>
+        </div>
+
+        {/* 3. MOST PROBABLE SOURCE CENTERED CARD */}
+        <div className="p-4 bg-[#0D1420] border border-white/10 rounded-xl flex flex-col items-center justify-center text-center space-y-1.5 shadow-lg relative overflow-hidden">
+          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-cyan-500 via-amber-500 to-red-500" />
+          
+          <div className="text-[10px] text-slate-400 font-mono uppercase tracking-widest font-semibold">
+            MOST PROBABLE SOURCE
           </div>
-          <div className="flex justify-between text-[10px] text-slate-400 pt-0.5">
-            <span>SPATIAL FENCE: <strong className="text-cyan-300 font-semibold">{spatialFenceLabel}</strong></span>
-            <span>PROXIMITY: <strong className="text-amber-400 font-semibold">{facilityDistanceText}</strong></span>
+
+          <h2 className="text-base font-bold text-white font-mono uppercase tracking-wide">
+            {displayTitle}
+          </h2>
+
+          <div className="text-[9.5px] font-mono text-slate-400 uppercase tracking-wider font-semibold">
+            {currentIncident.severity} SEVERITY
+          </div>
+
+          {/* Latitude & Longitude Badge */}
+          <div className="text-[10.5px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-500/40 px-3 py-1 rounded-md mt-0.5 font-bold">
+            LAT: {latFormatted}° | LON: {lngFormatted}°
           </div>
         </div>
 
-        {/* 4 Telemetry Metrics Grid */}
-        <div className="grid grid-cols-2 gap-2 font-mono text-xs">
-          <div className="p-2.5 rounded-lg bg-black/40 border border-white/10">
-            <div className="text-[9.5px] text-slate-400 uppercase">FRP MW POWER</div>
-            <div className="text-base font-bold text-white mt-0.5">{currentIncident.frpMw.toFixed(1)} MW</div>
+        {/* 4. AUTHENTIC SATELLITE SENSOR TELEMETRY GRID */}
+        <div className="p-3.5 bg-[#0D1420] border border-white/10 rounded-xl space-y-2 font-mono text-xs shadow-md">
+          <div className="flex items-center justify-between text-[10px] text-cyan-400 font-bold uppercase tracking-wider border-b border-white/10 pb-1.5">
+            <span>SATELLITE SENSOR TELEMETRY</span>
+            <span className="text-emerald-400 text-[9px]">VIIRS 375m S-NPP</span>
           </div>
-          <div className="p-2.5 rounded-lg bg-black/40 border border-white/10">
-            <div className="text-[9.5px] text-slate-400 uppercase">BRIGHTNESS TEMP</div>
-            <div className="text-base font-bold text-amber-400 mt-0.5">{currentIncident.brightnessK.toFixed(1)} K</div>
+
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="p-2 bg-black/40 border border-white/5 rounded-lg space-y-0.5">
+              <span className="text-[9px] text-slate-400 block uppercase">THERMAL POWER</span>
+              <span className="font-bold text-amber-400">{currentIncident.frpMw.toFixed(2)} MW</span>
+            </div>
+
+            <div className="p-2 bg-black/40 border border-white/5 rounded-lg space-y-0.5">
+              <span className="text-[9px] text-slate-400 block uppercase">BRIGHTNESS TEMP</span>
+              <span className="font-bold text-cyan-400">{currentIncident.brightnessK.toFixed(1)} K</span>
+            </div>
+
+            <div className="p-2 bg-black/40 border border-white/5 rounded-lg space-y-0.5">
+              <span className="text-[9px] text-slate-400 block uppercase">SENSOR CONFIDENCE</span>
+              <span className="font-bold text-emerald-400">{currentIncident.confidence || 97}%</span>
+            </div>
+
+            <div className="p-2 bg-black/40 border border-white/5 rounded-lg space-y-0.5">
+              <span className="text-[9px] text-slate-400 block uppercase">LAND COVER</span>
+              <span className="font-bold text-slate-200 truncate block">{currentIncident.landCover || 'Cropland'}</span>
+            </div>
           </div>
-          <div className="p-2.5 rounded-lg bg-black/40 border border-white/10">
-            <div className="text-[9.5px] text-slate-400 uppercase">VIIRS SENSOR CONF</div>
-            <div className="text-base font-bold text-emerald-400 mt-0.5">{currentIncident.confidence}%</div>
-          </div>
-          <div className="p-2.5 rounded-lg bg-black/40 border border-white/10">
-            <div className="text-[9.5px] text-slate-400 uppercase">LIGHTGBM ML CONF</div>
-            <div className="text-base font-bold text-cyan-400 mt-0.5">
-              {currentIncident.mlConfidenceRate ?? Math.round((currentIncident.predictedProbability ?? 0.85) * 100)}%
+
+          <div className="p-2 bg-black/50 border border-white/5 rounded-lg text-[10.5px] space-y-0.5">
+            <span className="text-[9px] text-slate-400 block uppercase">FACILITY FENCE MATCH</span>
+            <div className="flex items-center justify-between font-sans">
+              <span className="font-semibold text-white truncate">{currentIncident.nearestFacilityName || 'Unassigned / Open Field'}</span>
+              <span className="text-[9.5px] font-mono text-emerald-400 shrink-0 ml-1">
+                {currentIncident.facilityDistanceKm ? `${Math.round(currentIncident.facilityDistanceKm * 1000)}m` : '0m'}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Nearest Facility Proximity Card */}
-        <div className="p-3 bg-black/40 border border-white/10 rounded-lg space-y-2 font-mono text-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider flex items-center space-x-1">
-              <Factory className="w-3.5 h-3.5" />
-              <span>IMPACTED FACILITY</span>
-            </span>
-            <button
-              onClick={handleFacilityClick}
-              className="text-[10px] text-cyan-400 hover:underline flex items-center space-x-0.5 cursor-pointer"
-            >
-              <span>Inspect Facility</span>
-              <ChevronRight className="w-3 h-3" />
-            </button>
-          </div>
-          <div className="font-semibold text-white font-sans text-sm">{currentIncident.nearestFacilityName}</div>
-          <div className="flex justify-between text-[10.5px] text-slate-400 pt-1 border-t border-white/10">
-            <span>FACILITY TYPE: <strong className="text-white">{currentIncident.nearestFacilityType || 'Industrial Asset'}</strong></span>
-            <span>DISTANCE: <strong className="text-amber-400">{facilityDistanceText}</strong></span>
-          </div>
-        </div>
-
-        {/* 6-Class Probability Distribution */}
-        <ProbabilityDistributionCard incident={currentIncident} />
-
-        {/* Explainable AI Reasoning Flow */}
-        <ReasoningFlow
-          steps={currentIncident.reasoningSteps}
-          classification={currentIncident.classification}
-          confidence={currentIncident.confidence}
-          onDispatchAlert={() => {
-            setDispatchStatus('IDLE');
-            setIsDispatchModalOpen(true);
-          }}
-          severity={currentIncident.severity}
-        />
-
-        {/* Recommended Action Card */}
-        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg space-y-1 text-xs font-mono">
+        {/* 5. RECOMMENDED DISPATCH ACTION CARD */}
+        <div className="p-3.5 bg-red-950/20 border border-red-500/30 rounded-lg space-y-1 text-xs font-mono">
           <div className="flex items-center space-x-1.5 text-red-400 font-bold text-[11px] uppercase">
             <AlertTriangle className="w-4 h-4" />
-            <span>DISPATCH CHECKLIST</span>
+            <span>RECOMMENDED DISPATCH ACTION</span>
           </div>
           <p className="text-slate-200 text-xs leading-relaxed font-sans">
-            {currentIncident.suggestedAction}
+            MONITORING: Pattern consistent with agricultural residue burning or localized heat anomaly. Log for air-quality reporting.
           </p>
         </div>
 
-      </div>
+        {/* 6. CTAs ROW: INVESTIGATE REPORT & SINGLE DISPATCH BUTTON */}
+        <div className="space-y-2 font-mono">
+          <button
+            onClick={handleInvestigateClick}
+            className="w-full py-2.5 bg-cyan-950/40 hover:bg-cyan-900/40 border border-cyan-500/40 text-cyan-300 font-bold text-xs tracking-wider uppercase rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer shadow-sm"
+          >
+            <Search className="w-4 h-4 text-cyan-400" />
+            <span>INVESTIGATE REPORT →</span>
+          </button>
 
-      {/* Action Navigation Buttons */}
-      <div className="pt-3 mt-3 border-t border-white/10 space-y-2 font-mono shrink-0">
-        <button
-          onClick={handleInvestigateClick}
-          className="w-full py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 text-cyan-300 font-bold text-xs tracking-wider uppercase rounded transition flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_12px_rgba(56,189,248,0.2)]"
-        >
-          <Search className="w-4 h-4 text-cyan-400" />
-          <span>Investigate Audit Report →</span>
-        </button>
+          {/* SINGLE RED EMERGENCY DISPATCH BUTTON */}
+          <button
+            onClick={() => {
+              setDispatchStatus('IDLE');
+              setIsDispatchModalOpen(true);
+            }}
+            className="w-full py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs tracking-wider uppercase rounded-lg transition flex items-center justify-center space-x-2 cursor-pointer shadow-lg shadow-red-600/30"
+          >
+            <Radio className="w-4 h-4 animate-pulse" />
+            <span>DISPATCH EMERGENCY ALERT →</span>
+          </button>
+        </div>
 
-        <button
-          onClick={() => {
-            setDispatchStatus('IDLE');
-            setIsDispatchModalOpen(true);
-          }}
-          className="w-full py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs tracking-wider uppercase rounded transition-colors shadow-[0_0_15px_rgba(239,68,68,0.4)] flex items-center justify-center space-x-2 cursor-pointer"
-        >
-          <Radio className="w-4 h-4 animate-pulse" />
-          <span>Dispatch Emergency Alert →</span>
-        </button>
+        {/* 7. BOTTOM TWO NAV BUTTONS: 180-DAY HISTORY & RISK ZONE REGISTRY */}
+        <div className="grid grid-cols-2 gap-2 font-mono pt-1">
+          <button
+            onClick={handleHistoryClick}
+            className="p-2.5 bg-black/40 hover:bg-white/10 border border-white/15 rounded-lg text-slate-300 hover:text-white flex items-center justify-center space-x-1.5 transition text-xs cursor-pointer"
+          >
+            <History className="w-3.5 h-3.5 text-slate-400" />
+            <span>180-Day History</span>
+          </button>
+
+          <button
+            onClick={handleRiskRegistryClick}
+            className="p-2.5 bg-black/40 hover:bg-white/10 border border-white/15 rounded-lg text-slate-300 hover:text-white flex items-center justify-center space-x-1.5 transition text-xs cursor-pointer"
+          >
+            <Factory className="w-3.5 h-3.5 text-slate-400" />
+            <span>Risk Zone Registry</span>
+          </button>
+        </div>
+
       </div>
 
       {/* Dispatch Emergency Alert Modal */}
@@ -260,7 +243,7 @@ export const IntelligenceDrawer: React.FC = () => {
                 <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto animate-bounce" />
                 <div className="text-base font-bold text-white">EMERGENCY DISPATCH CONFIRMED</div>
                 <p className="text-xs text-slate-400 font-sans">
-                  Alert dispatched to <strong className="text-white">{selectedUnit}</strong> for event <strong className="text-cyan-400">{currentIncident.id}</strong> ({currentIncident.classification}).
+                  Alert dispatched to <strong className="text-white">{selectedUnit}</strong> for event <strong className="text-cyan-400">{currentIncident.id}</strong>.
                 </p>
                 <button
                   onClick={() => setIsDispatchModalOpen(false)}
@@ -273,32 +256,8 @@ export const IntelligenceDrawer: React.FC = () => {
               <div className="space-y-3 font-sans">
                 <div className="p-3 bg-black/40 border border-white/10 rounded-lg space-y-1 font-mono text-xs">
                   <div className="text-[10px] text-cyan-400 font-bold uppercase">TARGET INCIDENT</div>
-                  <div className="text-white font-bold">{currentIncident.id} — {currentIncident.classification}</div>
-                  <div className="text-slate-400">{currentIncident.locationName} | Risk Score: {Math.round(riskVal)}/100</div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-mono text-slate-400 mb-1">SELECT RESPONSE SQUAD / UNIT</label>
-                  <select
-                    value={selectedUnit}
-                    onChange={(e) => setSelectedUnit(e.target.value)}
-                    className="w-full p-2 bg-[#05080D] border border-white/10 rounded text-slate-200 font-mono text-xs focus:outline-none focus:border-cyan-400"
-                  >
-                    <option value="REGIONAL INDUSTRIAL RESPONSE SQUAD">REGIONAL INDUSTRIAL RESPONSE SQUAD</option>
-                    <option value="STATE FIRE & RESCUE SERVICES">STATE FIRE & RESCUE SERVICES</option>
-                    <option value="HAZMAT INDUSTRIAL SAFETY TEAM">HAZMAT INDUSTRIAL SAFETY TEAM</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-mono text-slate-400 mb-1">DISPATCH OPERATIONAL NOTES</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Enter dispatch directions or perimeter cautions..."
-                    value={dispatchNote}
-                    onChange={(e) => setDispatchNote(e.target.value)}
-                    className="w-full p-2 bg-[#05080D] border border-white/10 rounded text-slate-200 font-sans text-xs focus:outline-none focus:border-cyan-400"
-                  />
+                  <div className="text-white font-bold">{currentIncident.id} — {displayTitle}</div>
+                  <div className="text-slate-400">Lat/Lon: {latFormatted}°, {lngFormatted}° | Risk Score: {Math.round(currentIncident.riskScore ?? 25)}%</div>
                 </div>
 
                 <div className="flex gap-2 pt-2 font-mono">

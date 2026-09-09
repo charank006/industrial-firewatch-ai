@@ -226,13 +226,6 @@ export default function GeoFlareLanding() {
             ring.className = 'animate-ping opacity-75';
             wrapper.appendChild(ring);
           }
-
-          // Tooltip Hover
-          const tooltip = document.createElement('div');
-          tooltip.className = 'hidden group-hover:block absolute left-3 top-1/2 -translate-y-1/2 bg-[#040812]/95 border border-cyan-500/40 text-[10px] font-mono text-white px-2 py-1 rounded shadow-xl whitespace-nowrap z-50';
-          tooltip.innerHTML = `<span style="color: ${d.color}; font-weight: bold;">●</span> ${d.name} <span class="text-slate-400">(${d.frp})</span>`;
-          wrapper.appendChild(tooltip);
-
           return wrapper;
         });
 

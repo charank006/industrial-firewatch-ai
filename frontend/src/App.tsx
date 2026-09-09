@@ -7,7 +7,6 @@ import { IntelligenceProvider } from './context/IntelligenceContext';
 import { AlertsPage } from './pages/Alerts/AlertsPage';
 import { AnalyticsPage } from './pages/Analytics/AnalyticsPage';
 import { CommandCenterPage } from './pages/CommandCenter/CommandCenterPage';
-import { FacilityWatchPage } from './pages/FacilityWatch/FacilityWatchPage';
 import { FireDetailPage } from './pages/FireDetail/FireDetailPage';
 import { GlobalEarthPage } from './pages/GlobalEarth/GlobalEarthPage';
 import { IncidentAnalysisPage } from './pages/IncidentAnalysis/IncidentAnalysisPage';
@@ -40,10 +39,11 @@ const AppContent: React.FC = () => {
           <Route path="/incident/:incidentId" element={<IncidentAnalysisPage />} />
           <Route path="/incidents/:id" element={<IncidentDetailsPage />} />
           <Route path="/incidents" element={<IncidentsPage />} />
+          <Route path="/risk-zone-registry" element={<IncidentsPage />} />
           <Route path="/map-explorer" element={<GlobalEarthPage />} />
           <Route path="/thermal-history" element={<ThermalHistoryPage />} />
           <Route path="/weather-analysis" element={<WeatherAnalysisPage />} />
-          <Route path="/facility-watch" element={<FacilityWatchPage />} />
+          <Route path="/facility-watch" element={<IncidentsPage />} />
           <Route path="/risk-impact" element={<RiskImpactPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />

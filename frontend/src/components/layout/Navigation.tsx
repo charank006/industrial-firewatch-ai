@@ -1,13 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Cpu, Factory, Flame, Globe2, LayoutDashboard } from 'lucide-react';
+import { Cpu, Flame, Globe2, LayoutDashboard } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 
 const CORE_WORKSTATIONS = [
   { path: '/', label: 'Global Earth', icon: Globe2, badge: '3D WebGL' },
   { path: '/command-center', label: 'Operations Room', icon: LayoutDashboard, badge: 'LIVE' },
-  { path: '/incidents', label: 'Incidents Registry', icon: Flame, badge: 'ACTIVE' },
-  { path: '/facility-watch', label: 'Facility Monitor', icon: Factory, badge: 'ASSETS' },
+  { path: '/risk-zone-registry', label: 'Risk Zone Registry', icon: Flame, badge: 'ACTIVE' },
   { path: '/system-status', label: 'System Health & Methodology', icon: Cpu, badge: 'READY' },
 ];
 
