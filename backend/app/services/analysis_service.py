@@ -529,14 +529,17 @@ async def drain_pending(limit: int = 10) -> List[Dict[str, Any]]:
         timeout=settings.OVERPASS_TIMEOUT_S + 10,
         headers={"User-Agent": settings.HTTP_USER_AGENT},
     ) as client:
-        # Claims arrive highest-FRP first, so the budget is spent where the
-        # industrial detail matters most.
+        # 0 means unlimited, which is the default. When a budget is set for a
+        # bulk backfill, claims arrive highest-FRP first so it is spent where
+        # the industrial detail matters most.
         budget = settings.OSM_MAX_LOOKUPS_PER_RUN
         for index, claim in enumerate(claims):
             try:
                 results.append(
                     await analyse_claimed(
-                        claim, client=client, allow_overpass=index < budget
+                        claim,
+                        client=client,
+                        allow_overpass=budget <= 0 or index < budget,
                     )
                 )
             except Exception:  # noqa: BLE001 - one bad event must not end the batch

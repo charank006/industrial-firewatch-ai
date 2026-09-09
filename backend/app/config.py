@@ -116,11 +116,20 @@ class Settings(BaseSettings):
     # (Overpass retries across mirrors can run several minutes) so a slow run
     # is never mistaken for a dead one.
     ANALYSIS_STALL_MINUTES: int = 20
-    # Overpass lookups allowed per analysis run. Beyond this, events are
-    # classified on WorldCover alone rather than queueing behind a dependency
-    # that takes seconds to minutes per call. Claims are ordered by FRP, so
-    # the budget goes to the strongest signals.
-    OSM_MAX_LOOKUPS_PER_RUN: int = 3
+    # Overpass lookups allowed per analysis run; 0 means unlimited.
+    #
+    # This was set to 3 as a throughput guard and it starved the pipeline: a
+    # batch of 5 left 2 events with no OSM at all, and a 60-event bulk run
+    # left 57 without. Those events lost every industrial, gas and factory
+    # signal, so Industrial Fire, Routine Flare and Gas/Oil became
+    # unreachable and the facility monitor had no sites to list.
+    #
+    # The guard was not needed. India yields roughly 140 detections a day and
+    # a batch of 5 runs every 2 minutes, which is 150 events an hour of
+    # capacity against ~6 an hour of demand. Overpass being slow or down is
+    # already handled by its circuit breaker. Left configurable for bulk
+    # backfills, off by default.
+    OSM_MAX_LOOKUPS_PER_RUN: int = 0
     CONTAINMENT_SWEEP_HOURS: int = 6
     # Skip the first ingest at boot; useful in development so a restart does
     # not immediately spend FIRMS quota.
