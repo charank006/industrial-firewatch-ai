@@ -10,7 +10,6 @@ export const MapControls: React.FC = () => {
 
   return (
     <div className="absolute top-3 right-3 z-30 flex flex-col items-end space-y-2 font-mono text-xs">
-      {/* Control Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 bg-[#05080E]/90 hover:bg-[#090D17] border border-white/10 rounded-lg text-slate-300 hover:text-white shadow-xl transition flex items-center space-x-1.5 cursor-pointer backdrop-blur-md"
@@ -60,17 +59,17 @@ export const MapControls: React.FC = () => {
 
           {/* Toggleable Layers */}
           <div className="space-y-1.5 pt-2 border-t border-white/10">
-            <span className="text-[10px] text-[#A7B4C1] uppercase font-semibold block flex items-center justify-between">
+            <span className="text-[10px] text-[#A7B4C1] uppercase font-semibold flex items-center justify-between">
               <span>VISIBILITY LAYERS</span>
               <Layers className="w-3 h-3 text-slate-400" />
             </span>
 
             <div className="space-y-1">
               {[
-                { key: 'thermalAnomalies', label: 'Thermal Hotspots (FRP)' },
+                { key: 'thermalVIIRS', label: 'Thermal Hotspots (FRP)' },
                 { key: 'industrialFacilities', label: 'Industrial Infrastructure' },
-                { key: 'riskBufferZones', label: 'Risk Radius Buffers' },
-                { key: 'plumeVectors', label: 'Wind / Smoke Dispersion' },
+                { key: 'riskZones', label: 'Risk Radius Buffers' },
+                { key: 'administrativeBounds', label: 'Indian State Borders' },
               ].map((layer) => (
                 <label
                   key={layer.key}

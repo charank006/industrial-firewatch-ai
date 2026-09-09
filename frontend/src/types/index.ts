@@ -10,7 +10,6 @@ export type EventClassification =
   | 'Urban'
   | 'Unknown Anomaly';
 
-
 export type FacilityStatus = 'NORMAL' | 'ELEVATED' | 'ANOMALY_DETECTED';
 
 export type LandCoverCategory =
@@ -68,18 +67,21 @@ export interface ThermalHotspot {
   suggestedAction: string;
   locationName: string;
   isNew: boolean;
+  persistenceActiveDays?: number;
+  predictedProbability?: number;
+  classProbabilities?: Record<string, number>;
+  modelVersion?: string;
+  topFeatures?: Array<{ feature: string; value: number; model_importance_gain: number }>;
+  riskScore?: number;
+  nearestFacilityType?: string;
+  sensorConfidenceRate?: number;
+  mlConfidenceRate?: number;
+  observationCount?: number;
+  nearbyEventsCount?: number;
+  baselineFrp?: number;
+  frpTimeline?: Array<{ time: string; frp: number; baseline: number }>;
 }
 
-/**
- * An industrial site as OpenStreetMap maps it, discovered within 1 km of a
- * detected fire.
- *
- * This replaced a curated registry of six hand-seeded Gujarat plants, which
- * could only describe the region it was seeded for — once the AOI moved to
- * Telangana every fire reported a "nearest facility" 700 km away. There is no
- * stable id for an OSM way across edits, so `id` is a name+type key and a
- * genuine site is often unnamed (`named: false`).
- */
 export interface IndustrialFacility {
   id: string;
   name: string;
@@ -142,14 +144,11 @@ export interface SituationMetrics {
   mediumPriorityCount: number;
   lowPriorityCount: number;
   avgFrp: number;
-  eventMix: Record<EventClassification, number>;
+  eventMix: Partial<Record<EventClassification, number>>;
   latestHotspot?: ThermalHotspot;
 }
 
 // --- Pipeline detail types (Phase 5/6) -----------------------------------
-// These describe data the backend pipeline produces. They are additive: no
-// existing type or component changes shape.
-
 export type FireClassId =
   | 'industrial'
   | 'flare'
@@ -257,10 +256,6 @@ export interface FireAnalysis {
   impact: ImpactDetail | null;
 }
 
-/**
- * Detection validity — a SEPARATE verdict from source class.
- * "Is this a fire at all?" vs "what kind of fire is it?"
- */
 export interface ValidityDetail {
   verdict: 'REAL_FIRE' | 'UNCERTAIN' | 'LIKELY_FALSE_ALARM';
   pReal: number;
@@ -269,4 +264,32 @@ export interface ValidityDetail {
   reasoningSteps: ReasoningStep[];
   modelVersion: string;
   interpretation: string;
+}
+
+export interface FIRMSSyncStatus {
+  is_configured: boolean;
+  map_key_masked: string;
+  supported_sensors: string[];
+  predefined_areas: string[];
+  total_events_in_db: number;
+  total_observations_in_db: number;
+  scheduler?: {
+    running: boolean;
+    poll_interval_seconds: number;
+    area: string;
+    sources: string[];
+    days_lookback: number;
+    is_key_configured: boolean;
+    last_sync_time: string | null;
+    last_sync_count: number;
+    last_error: string | null;
+  };
+}
+
+export interface FIRMSSyncOptions {
+  map_key?: string;
+  sources?: string[];
+  area?: string;
+  days?: number;
+  clear_existing?: boolean;
 }
