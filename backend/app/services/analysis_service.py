@@ -38,7 +38,7 @@ from app.models.models import (
     WeatherAnomalyRecord,
     WeatherObservation,
 )
-from app.services import weather_service
+from app.services import landcover_service, weather_service
 from app.services.classifier.feature_vector import build_feature_vector
 from app.services.classifier.scorer import classify, suggested_action
 from app.services.classifier.validity import assess_validity
@@ -100,6 +100,7 @@ class Enrichment:
     from_cache: bool = False
     surroundings_unavailable: bool = False
     weather: Optional[weather_service.WeatherAnalysis] = None
+    land_cover: Optional[Dict[str, Any]] = None
     errors: Dict[str, str] = field(default_factory=dict)
 
 
@@ -148,6 +149,14 @@ async def fetch_enrichment(
     except (httpx.HTTPError, weather_service.WeatherError) as exc:
         logger.warning("Weather failed at %.4f,%.4f: %s", latitude, longitude, exc)
         enrichment.errors["weather"] = f"{type(exc).__name__}: {exc}"
+
+    # Land cover from the WorldCover raster. Unlike Overpass this has no
+    # coverage gaps, so it answers for the many fires OSM has nothing to say
+    # about. Returns None rather than raising if the raster is unreachable.
+    land_cover = await landcover_service.fetch_land_cover(latitude, longitude, radius_m)
+    enrichment.land_cover = land_cover.to_dict() if land_cover else None
+    if land_cover is None:
+        enrichment.errors["land_cover"] = "raster unavailable"
 
     return enrichment
 
@@ -221,7 +230,10 @@ async def persist_weather(
 
 
 async def classify_event(
-    db: AsyncSession, event: FireEvent, surroundings_dict: Optional[Dict[str, Any]]
+    db: AsyncSession,
+    event: FireEvent,
+    surroundings_dict: Optional[Dict[str, Any]],
+    land_cover: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the feature vector, score it, and assess impact.
 
@@ -229,7 +241,7 @@ async def classify_event(
     still gets a prediction, it just scores as `unknown` with the confidence
     penalty its thin inputs deserve.
     """
-    features = await build_feature_vector(db, event, surroundings_dict)
+    features = await build_feature_vector(db, event, surroundings_dict, land_cover=land_cover)
 
     # Validity FIRST: whether this is a fire at all is a different question
     # from what kind of fire it is, and asking them in the wrong order is how
@@ -342,8 +354,15 @@ async def apply_enrichment(
     if enrichment.weather is not None:
         await persist_weather(db, event, enrichment.weather)
 
+    if enrichment.land_cover and enrichment.land_cover.get("label") not in (None, "Unclassified"):
+        # The raster measured the ground; OSM only reported what was mapped.
+        event.land_cover = enrichment.land_cover["label"]
+
     outcome = await classify_event(
-        db, event, surroundings.to_dict() if surroundings else None
+        db,
+        event,
+        surroundings.to_dict() if surroundings else None,
+        land_cover=enrichment.land_cover,
     )
     prediction = outcome["prediction"]
     validity = outcome["validity"]

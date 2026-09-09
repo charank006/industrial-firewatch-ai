@@ -57,6 +57,16 @@ class Settings(BaseSettings):
     # Telangana box overlaps Maharashtra. Empty keeps the whole rectangle.
     AOI_BOUNDARY: str = ""
 
+    # --- ESA WorldCover ----------------------------------------------------
+    # A 10 m global land-cover raster, read as windowed range requests against
+    # the public cloud-optimised GeoTIFF. Supplies the vegetation and water
+    # evidence OpenStreetMap is missing across most of the AOI.
+    WORLDCOVER_ENABLED: bool = True
+    WORLDCOVER_BASE_URL: str = (
+        "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map"
+    )
+    WORLDCOVER_TIMEOUT_S: int = 25
+
     # --- Weather (Open-Meteo) --------------------------------------------
     # Forecast endpoint with past_days, NOT archive-api: the archive is
     # ERA5-backed and lags ~5 days, which would put a fresh fire's current hour

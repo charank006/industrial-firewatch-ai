@@ -136,6 +136,12 @@
       "flare": -5.0,
       "gas_oil": -4.0,
       "industrial": 0.0
+    },
+    "builtup_cover": {
+      "urban": 2.4,
+      "industrial": 0.3,
+      "forest": -1.6,
+      "agriculture": -1.6
     }
   },
   "confidence": {

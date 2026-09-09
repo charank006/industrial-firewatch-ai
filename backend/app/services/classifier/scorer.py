@@ -128,6 +128,15 @@ EVIDENCE: List[EvidenceTerm] = [
         lambda f: 1.0 if _get(f, "gas_facilities_within_1km") < 1 else 0.0,
     ),
     EvidenceTerm(
+        "builtup_cover",
+        "Built-up Ground Cover",
+        "{builtup_fraction:.0%} of the surrounding area is built-up",
+        # From the WorldCover raster, which measures every pixel. The urban
+        # class previously had only OSM residential polygons, which are
+        # absent across most of the AOI.
+        lambda f: clamp(_get(f, "builtup_fraction") / 0.4),
+    ),
+    EvidenceTerm(
         "forest_area",
         "Forest Land Cover",
         "{forest_area_km2:.2f} km2 forest/woodland within radius",

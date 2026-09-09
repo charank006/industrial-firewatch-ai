@@ -81,3 +81,15 @@ def make_detection(
         day_night=day_night,
         raw={"synthetic": True},
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_worldcover_network(monkeypatch):
+    """Tests never reach the WorldCover raster over the network.
+
+    Reads are windowed range requests to S3; leaving them live would make the
+    suite depend on the internet and add a second per analysed event.
+    Coverage for the service itself lives in test_landcover.py, against a
+    stubbed read.
+    """
+    monkeypatch.setattr(settings, "WORLDCOVER_ENABLED", False)

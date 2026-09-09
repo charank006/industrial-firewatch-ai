@@ -162,11 +162,11 @@ class TestPerEventCommit:
         real_classify = analysis_service.classify_event
         calls = {"n": 0}
 
-        async def failing_classify(db, event, surroundings):
+        async def failing_classify(db, event, surroundings, land_cover=None):
             calls["n"] += 1
             if calls["n"] == 2:
                 raise RuntimeError("scorer blew up")
-            return await real_classify(db, event, surroundings)
+            return await real_classify(db, event, surroundings, land_cover=land_cover)
 
         monkeypatch.setattr(analysis_service, "classify_event", failing_classify)
         results = await analysis_service.drain_pending(limit=3)
@@ -182,7 +182,7 @@ class TestPerEventCommit:
         ids = await seed_events(pipeline_db, count=2)
         monkeypatch.setattr(overpass, "fetch_elements", _no_elements)
 
-        async def always_fails(db, event, surroundings):
+        async def always_fails(db, event, surroundings, land_cover=None):
             raise RuntimeError("scorer blew up")
 
         monkeypatch.setattr(analysis_service, "classify_event", always_fails)
