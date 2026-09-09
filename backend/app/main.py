@@ -56,13 +56,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# `allow_origins=["*"]` together with `allow_credentials=True` is invalid per
-# the CORS spec and rejected by browsers - it only appeared to work because
-# nothing sent credentials. In dev the Vite proxy handles /api, so this list is
-# a fallback for direct cross-origin calls.
+# CORS Middleware Configuration
+# Explicitly allowing Render frontend URL (no trailing slash) and local dev origins
+allowed_origins = list(set([
+    "https://industrial-firewatch-ai-2.onrender.com",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+] + settings.cors_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

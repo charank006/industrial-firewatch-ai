@@ -164,7 +164,7 @@ class Settings(BaseSettings):
     # Guards POST /api/admin/* so nobody can burn the FIRMS quota.
     ADMIN_API_TOKEN: str = ""
 
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,https://industrial-firewatch-ai-2.onrender.com"
 
     # --- Notification providers (deferred; demo mode only) ---------------
     FCM_PROJECT_ID: str = ""
