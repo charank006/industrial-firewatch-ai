@@ -10,7 +10,6 @@ export const MapControls: React.FC = () => {
 
   return (
     <div className="absolute top-3 right-3 z-30 flex flex-col items-end space-y-2 font-mono text-xs">
-      {/* Control Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 bg-[#05080E]/90 hover:bg-[#090D17] border border-white/10 rounded-lg text-slate-300 hover:text-white shadow-xl transition flex items-center space-x-1.5 cursor-pointer backdrop-blur-md"

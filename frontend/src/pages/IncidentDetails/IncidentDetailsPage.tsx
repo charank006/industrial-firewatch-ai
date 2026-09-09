@@ -6,19 +6,12 @@ import {
   ArrowLeft,
   ChevronRight,
   Compass,
+  TrendingUp,
 } from 'lucide-react';
 import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
+import { ProbabilityDistributionCard } from '../../components/intelligence/ProbabilityDistributionCard';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
-
-const HISTORICAL_FRP_DATA = [
-  { time: 'Jul 01', frp: 15.2, baseline: 15.0 },
-  { time: 'Jul 15', frp: 14.8, baseline: 15.0 },
-  { time: 'Aug 01', frp: 16.1, baseline: 15.0 },
-  { time: 'Aug 15', frp: 15.4, baseline: 15.0 },
-  { time: 'Aug 26', frp: 15.0, baseline: 15.0 },
-  { time: 'Today 21:42', frp: 184.6, baseline: 15.0 },
-];
 
 export const IncidentDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -31,6 +24,30 @@ export const IncidentDetailsPage: React.FC = () => {
     selectFacilityById(incident.nearestFacilityId);
     navigate(`/facility-watch?facilityId=${incident.nearestFacilityId}`);
   };
+
+  const baselineValue = incident.baselineFrp ?? (
+    incident.classification.toLowerCase().includes('forest')
+      ? 0.5
+      : incident.classification.toLowerCase().includes('agricultural')
+      ? 1.0
+      : 15.0
+  );
+
+  // Use dynamic event timeline or compute tailored fallback
+  const timelineData = (incident.frpTimeline && incident.frpTimeline.length > 0)
+    ? incident.frpTimeline
+    : [
+        { time: 'Day -5', frp: Number((baselineValue * 0.95).toFixed(2)), baseline: baselineValue },
+        { time: 'Day -4', frp: Number((baselineValue * 1.05).toFixed(2)), baseline: baselineValue },
+        { time: 'Day -3', frp: Number((baselineValue * 0.98).toFixed(2)), baseline: baselineValue },
+        { time: 'Day -2', frp: Number((baselineValue * 1.02).toFixed(2)), baseline: baselineValue },
+        { time: 'Day -1', frp: Number((baselineValue * 1.08).toFixed(2)), baseline: baselineValue },
+        { time: incident.timeFormatted || 'Observation', frp: Number(incident.frpMw.toFixed(1)), baseline: baselineValue },
+      ];
+
+  const elevationRatio = baselineValue > 0
+    ? Math.round(((incident.frpMw - baselineValue) / baselineValue) * 100)
+    : 0;
 
   return (
     <div className="min-h-screen bg-[#050A12] p-4 sm:p-6 space-y-6 font-sans text-[#F5F7FA]">
@@ -62,7 +79,9 @@ export const IncidentDetailsPage: React.FC = () => {
                 <Compass className="w-4 h-4" />
                 <span>SPATIAL MAPLIBRE CONTEXT MAP</span>
               </span>
-              <span className="text-[#A7B4C5]">500m & 2km RISK BUFFER RINGS</span>
+              <span className="text-[#A7B4C5]">
+                {incident.locationName}
+              </span>
             </div>
 
             <div className="h-[420px] rounded-lg overflow-hidden border border-[#203246] relative">
@@ -72,26 +91,64 @@ export const IncidentDetailsPage: React.FC = () => {
 
           {/* Historical FRP Trend Chart */}
           <div className="bg-[#07101B] border border-[#203246] rounded-xl p-4 space-y-3 font-mono">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-[#16A9D9] uppercase tracking-wider">
-                HISTORICAL FRP VS BASELINE SPIKE
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+              <span className="font-semibold text-[#16A9D9] uppercase tracking-wider flex items-center space-x-1.5">
+                <TrendingUp className="w-4 h-4 text-[#16A9D9]" />
+                <span>HISTORICAL FRP VS BASELINE SPIKE</span>
               </span>
-              <span className="text-[#FFB020] font-bold">PEAK: {incident.frpMw} MW</span>
+              <div className="flex items-center space-x-3 text-[11px]">
+                <span className="text-[#A7B4C5]">
+                  BASELINE: <strong className="text-[#16A9D9] font-mono">{baselineValue.toFixed(1)} MW</strong>
+                </span>
+                <span className="text-[#FFB020] font-bold bg-[#FFB020]/10 border border-[#FFB020]/30 px-2 py-0.5 rounded">
+                  PEAK: {incident.frpMw.toFixed(1)} MW
+                </span>
+                {elevationRatio > 0 && (
+                  <span className="text-[#FF3B30] font-bold bg-[#FF3B30]/10 border border-[#FF3B30]/30 px-2 py-0.5 rounded">
+                    +{elevationRatio}%
+                  </span>
+                )}
+              </div>
             </div>
 
-            <div className="h-48 w-full pt-2">
+            <div className="h-52 w-full pt-2">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={HISTORICAL_FRP_DATA}>
+                <LineChart data={timelineData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#203246" />
                   <XAxis dataKey="time" stroke="#66768A" fontSize={10} />
-                  <YAxis stroke="#66768A" fontSize={10} />
+                  <YAxis stroke="#66768A" fontSize={10} domain={[0, 'auto']} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#07101B', borderColor: '#203246', color: '#fff' }}
+                    contentStyle={{ backgroundColor: '#07101B', borderColor: '#203246', color: '#fff', fontSize: '11px' }}
+                    formatter={(value: any, name?: any) => [
+                      `${Number(value).toFixed(1)} MW`,
+                      name === 'frp' ? 'Observed FRP' : 'Baseline Level'
+                    ]}
                   />
-                  <Line type="monotone" dataKey="frp" stroke="#FFB020" strokeWidth={2.5} dot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="baseline" stroke="#16A9D9" strokeDasharray="5 5" strokeWidth={1.5} />
+                  <Line
+                    type="monotone"
+                    dataKey="frp"
+                    name="frp"
+                    stroke="#FFB020"
+                    strokeWidth={2.5}
+                    dot={{ r: 4, fill: '#FFB020' }}
+                    activeDot={{ r: 6 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="baseline"
+                    name="baseline"
+                    stroke="#16A9D9"
+                    strokeDasharray="5 5"
+                    strokeWidth={1.5}
+                    dot={false}
+                  />
                 </LineChart>
               </ResponsiveContainer>
+            </div>
+
+            <div className="flex justify-between items-center text-[10px] text-[#A7B4C5] pt-1 border-t border-[#203246]">
+              <span>Background Noise Threshold: {baselineValue.toFixed(1)} MW ({incident.landCover})</span>
+              <span>Detection Time: {incident.timeFormatted || 'Recent'}</span>
             </div>
           </div>
         </div>
@@ -102,19 +159,26 @@ export const IncidentDetailsPage: React.FC = () => {
             <div className="flex items-center justify-between font-mono text-xs">
               <span
                 className={`px-2.5 py-1 text-xs font-semibold rounded ${
-                  incident.severity === 'HIGH' ? 'bg-[#FF3B30]/20 text-[#FF3B30] border border-[#FF3B30]/40' : 'bg-[#FFB020]/20 text-[#FFB020]'
+                  incident.severity === 'CRITICAL' || incident.severity === 'HIGH'
+                    ? 'bg-[#FF3B30]/20 text-[#FF3B30] border border-[#FF3B30]/40'
+                    : 'bg-[#FFB020]/20 text-[#FFB020] border border-[#FFB020]/40'
                 }`}
               >
                 {incident.severity} SEVERITY
               </span>
-              <span className="text-[#28C76F] font-bold">
-                CONFIDENCE: {incident.confidence}%
-              </span>
+              <div className="flex items-center space-x-2">
+                <span className="text-[#28C76F] font-bold">
+                  CONF: {incident.sensorConfidenceRate ?? incident.confidence}%
+                </span>
+                <span className="text-[#3DB7D9] font-bold">
+                  ML: {incident.mlConfidenceRate ?? Math.round((incident.predictedProbability ?? 0.85) * 100)}%
+                </span>
+              </div>
             </div>
 
             <div>
               <h2 className="text-xl font-semibold text-white tracking-wide">
-                {incident.classification}
+                {incident.classification.replace(/_/g, ' ').toUpperCase()}
               </h2>
               <p className="text-xs text-[#A7B4C5] font-mono mt-1">{incident.locationName}</p>
             </div>
@@ -122,8 +186,13 @@ export const IncidentDetailsPage: React.FC = () => {
             {/* Nearest Facility Link */}
             <div className="p-3 bg-[#050A12] border border-[#203246] rounded-lg flex items-center justify-between font-mono text-xs">
               <div>
-                <span className="text-[10px] text-[#16A9D9] uppercase block font-semibold">TARGET PROXIMITY</span>
+                <span className="text-[10px] text-[#16A9D9] uppercase block font-semibold">
+                  TARGET PROXIMITY ({incident.nearestFacilityType || 'Industrial Asset'})
+                </span>
                 <span className="text-white font-bold">{incident.nearestFacilityName}</span>
+                <span className="text-[11px] text-[#38BDF8] block font-mono">
+                  {incident.facilityDistanceKm < 1 ? Math.round(incident.facilityDistanceKm * 1000) + ' m' : incident.facilityDistanceKm.toFixed(1) + ' km'} away
+                </span>
               </div>
               <button
                 onClick={handleFacilityClick}
@@ -135,11 +204,12 @@ export const IncidentDetailsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-[#07101B] border border-[#203246] rounded-xl p-5">
+          <div className="bg-[#07101B] border border-[#203246] rounded-xl p-5 space-y-4">
+            <ProbabilityDistributionCard incident={incident} />
             <ReasoningFlow
               steps={incident.reasoningSteps}
               classification={incident.classification}
-              confidence={incident.confidence}
+              confidence={incident.sensorConfidenceRate ?? incident.confidence}
             />
           </div>
 
@@ -157,3 +227,4 @@ export const IncidentDetailsPage: React.FC = () => {
     </div>
   );
 };
+

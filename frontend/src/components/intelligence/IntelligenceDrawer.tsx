@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 import { ReasoningFlow } from './ReasoningFlow';
+import { ProbabilityDistributionCard } from './ProbabilityDistributionCard';
 
 export const IntelligenceDrawer: React.FC = () => {
   const { selectedIncident, selectFacilityById, filteredHotspots, facilities } = useIntelligence();
@@ -171,6 +172,113 @@ export const IntelligenceDrawer: React.FC = () => {
 
       {/* Action Buttons */}
       <div className="pt-4 border-t border-white/10 space-y-2 font-mono shrink-0">
+        <p className="text-xs text-[#A7B4C1]">{currentIncident.locationName}</p>
+      </div>
+
+      {/* Risk Score & Priority Meter */}
+      <div className="p-3 bg-[#0D151E] border border-[#253340] rounded-lg space-y-2 font-mono text-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-[#A7B4C1] uppercase tracking-wider flex items-center space-x-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-[#F04438]" />
+            <span>ASSESSED RISK SCORE</span>
+          </span>
+          <span className="font-bold text-sm text-[#F04438]">
+            {currentIncident.riskScore ?? 55} / 100
+          </span>
+        </div>
+        <div className="w-full h-1.5 bg-[#081019] rounded-full overflow-hidden border border-[#253340]">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${
+              (currentIncident.riskScore ?? 55) >= 70
+                ? 'bg-[#F04438]'
+                : (currentIncident.riskScore ?? 55) >= 40
+                ? 'bg-[#E8A93A]'
+                : 'bg-[#39B978]'
+            }`}
+            style={{ width: `${Math.min(100, Math.max(5, currentIncident.riskScore ?? 55))}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-[10px] text-[#A7B4C1]">
+          <span>Severity: <strong className="text-white">{currentIncident.severity}</strong></span>
+          <span>Buffer: <strong className="text-white">{currentIncident.facilityDistanceKm <= 2.5 ? 'INSIDE 2.5km ZONE' : `OUTER SECTOR (${currentIncident.facilityDistanceKm.toFixed(1)}km)`}</strong></span>
+        </div>
+      </div>
+
+      {/* Telemetry & Dual Confidence Rates Grid */}
+      <div className="grid grid-cols-2 gap-2 font-mono text-xs">
+        <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
+          <span className="text-[9px] text-[#A7B4C1] block uppercase">FRP RADIATIVE POWER</span>
+          <span className="text-sm font-bold text-[#E8A93A]">{currentIncident.frpMw.toFixed(1)} MW</span>
+        </div>
+        <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
+          <span className="text-[9px] text-[#A7B4C1] block uppercase">BRIGHTNESS TEMP</span>
+          <span className="text-sm font-bold text-[#3DB7D9]">{currentIncident.brightnessK.toFixed(1)} K</span>
+        </div>
+        <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
+          <span className="text-[9px] text-[#A7B4C1] block uppercase">VIIRS SENSOR CONF</span>
+          <span className="text-sm font-bold text-[#39B978]">{currentIncident.sensorConfidenceRate ?? currentIncident.confidence}%</span>
+        </div>
+        <div className="p-2 bg-[#0D151E] border border-[#253340] rounded">
+          <span className="text-[9px] text-[#A7B4C1] block uppercase">LIGHTGBM ML CONF</span>
+          <span className="text-sm font-bold text-[#00E5FF]">
+            {currentIncident.mlConfidenceRate ?? Math.round((currentIncident.predictedProbability ?? 0.85) * 100)}%
+          </span>
+        </div>
+      </div>
+
+      {/* Facility Proximity & Impacted Assets */}
+      <div className="p-3 bg-[#0D151E] border border-[#253340] rounded-lg space-y-2 font-mono text-xs">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-[#3DB7D9] font-semibold uppercase tracking-wider flex items-center space-x-1.5">
+            <Factory className="w-3.5 h-3.5 text-[#3DB7D9]" />
+            <span>NEAREST FACILITY / ASSET</span>
+          </span>
+          <span className="text-[9px] px-1.5 py-0.5 bg-[#081019] border border-[#253340] rounded text-[#A7B4C1]">
+            {currentIncident.nearestFacilityType ?? 'Industrial Sector'}
+          </span>
+        </div>
+        <div className="font-semibold text-white font-sans text-sm">{currentIncident.nearestFacilityName}</div>
+        <div className="grid grid-cols-2 gap-2 text-[10px] text-[#A7B4C1] pt-1 border-t border-[#253340]">
+          <div>
+            <span className="block text-[9px] uppercase">PROXIMITY</span>
+            <span className="text-[#E8A93A] font-bold text-xs">
+              {currentIncident.facilityDistanceKm < 1
+                ? `${Math.round(currentIncident.facilityDistanceKm * 1000)} m`
+                : `${currentIncident.facilityDistanceKm.toFixed(1)} km`}
+            </span>
+          </div>
+          <div>
+            <span className="block text-[9px] uppercase">CLUSTER SIZE</span>
+            <span className="text-white font-bold text-xs">
+              {currentIncident.observationCount ?? 1} Detections
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 6-Class Probability Distribution / Persistence Badge */}
+      <ProbabilityDistributionCard incident={currentIncident} />
+
+      {/* Why This Was Flagged / Explainable Reasoning */}
+      <ReasoningFlow
+        steps={currentIncident.reasoningSteps}
+        classification={currentIncident.classification}
+        confidence={currentIncident.sensorConfidenceRate ?? currentIncident.confidence}
+      />
+
+      {/* Recommended Action */}
+      <div className="p-3 bg-[#F04438]/10 border border-[#F04438]/30 rounded-lg space-y-1 text-xs font-mono">
+        <div className="flex items-center space-x-1.5 text-[#F04438] font-semibold text-[11px] uppercase">
+          <AlertTriangle className="w-4 h-4" />
+          <span>RECOMMENDED ACTION</span>
+        </div>
+        <p className="text-slate-200 text-xs leading-relaxed font-sans">
+          {currentIncident.suggestedAction}
+        </p>
+      </div>
+
+      {/* Quick Action Navigation CTAs */}
+      <div className="space-y-2 pt-2 border-t border-[#253340] font-mono">
         <button
           onClick={handleInvestigateClick}
           className="w-full py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 text-cyan-300 font-bold text-xs tracking-wider uppercase rounded transition flex items-center justify-center space-x-2 cursor-pointer shadow-[0_0_12px_rgba(56,189,248,0.2)]"
