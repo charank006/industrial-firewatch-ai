@@ -105,8 +105,33 @@ const SIGNATURES: SignatureItem[] = [
   },
 ];
 
+// --- ANTIMETAL SIGNATURE ANIMATION: ROLLING NUMBER TICKER ---
+function AnimatedNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(value);
+  useEffect(() => {
+    let start = display;
+    const diff = value - start;
+    if (diff === 0) return;
+    const step = diff / 12;
+    const interval = setInterval(() => {
+      start += step;
+      if ((step > 0 && start >= value) || (step < 0 && start <= value)) {
+        setDisplay(value);
+        clearInterval(interval);
+      } else {
+        setDisplay(Math.round(start * 10) / 10);
+      }
+    }, 25);
+    return () => clearInterval(interval);
+  }, [value]);
+  return <span>{display}%</span>;
+}
+
 export default function GeoFlareLanding() {
   const navigate = useNavigate();
+
+  // Beat 2: Spatial Dilemma Dynamic Hover Interrogation State
+  const [hoveredGroundIndex, setHoveredGroundIndex] = useState<number | null>(null);
 
   // Beat 3: Context Interactive Demo State
   const [activeLayers, setActiveLayers] = useState<ContextLayer[]>(['thermal']);
@@ -750,13 +775,48 @@ export default function GeoFlareLanding() {
                   <line x1="200" y1="0" x2="200" y2="200" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
                 </svg>
 
-                {/* Thermal Hotspot Bloom sitting ON TOP of GIS Map */}
-                <div className="w-20 h-20 rounded-full bg-red-500/25 animate-ping absolute" />
-                <div className="w-10 h-10 rounded-full bg-amber-500/60 blur-sm relative" />
-                <div className="w-3.5 h-3.5 rounded-full bg-white relative shadow-[0_0_15px_#ffffff]" />
+                {/* Thermal Hotspot Bloom sitting ON TOP of GIS Map with Pushbroom Scanline & Interrogation Reticle */}
+                <div className="absolute inset-0 animate-sensor-scan pointer-events-none border-b border-cyan-400/40" />
+                <div className="absolute w-28 h-28 border border-dashed border-cyan-400/40 rounded-full animate-ping opacity-25 pointer-events-none" />
+                <div className="absolute top-3 left-3 text-[9px] font-mono text-cyan-400/90 bg-black/90 px-2 py-0.5 rounded border border-cyan-500/40 z-10 flex items-center space-x-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                  <span>RESOLVING: [?][?] · CLASSIFICATION: UNKNOWN</span>
+                </div>
+
+                {/* Dynamic Thermal Hotspot Bloom shifting on hover */}
+                <div 
+                  className={`absolute w-36 h-36 rounded-full flir-heat-bloom transition-colors duration-500 ${
+                    hoveredGroundIndex === 0 ? 'bg-cyan-500/40' :
+                    hoveredGroundIndex === 1 ? 'bg-red-500/45' :
+                    hoveredGroundIndex === 2 ? 'bg-amber-500/40' :
+                    hoveredGroundIndex === 3 ? 'bg-emerald-500/40' : 'bg-red-500/30'
+                  }`}
+                />
+                <div 
+                  className="absolute w-20 h-20 rounded-full flir-heat-bloom bg-amber-400/50 transition-colors duration-500" 
+                  style={{ animationDelay: '-1s' }} 
+                />
+                <div 
+                  className="w-4 h-4 rounded-full bg-white relative z-10 transition-all duration-300"
+                  style={{
+                    boxShadow: 
+                      hoveredGroundIndex === 0 ? '0 0 22px #38bdf8' :
+                      hoveredGroundIndex === 1 ? '0 0 22px #ef4444' :
+                      hoveredGroundIndex === 2 ? '0 0 22px #f59e0b' :
+                      hoveredGroundIndex === 3 ? '0 0 22px #10b981' : '0 0 15px #ffffff'
+                  }}
+                />
+                <div className="hud-scanline" />
                 
-                <div className="absolute bottom-3 font-mono text-[11px] text-slate-300 bg-black/80 px-2.5 py-1 rounded border border-white/10 z-10">
-                  LAT: 29.742° N · TEMP: 1,140°C · STATUS: UNKNOWN
+                <div className="absolute bottom-3 font-mono text-[11px] text-slate-300 bg-black/90 px-3 py-1 rounded border border-white/20 z-10 transition-all">
+                  LAT: 29.742° N · TEMP:{' '}
+                  <span className="font-bold text-amber-400">
+                    {hoveredGroundIndex === 0 ? '1,120°C' : hoveredGroundIndex === 1 ? '1,380°C' : hoveredGroundIndex === 2 ? '860°C' : hoveredGroundIndex === 3 ? '540°C' : '1,140°C'}
+                  </span>{' '}
+                  · STATUS:{' '}
+                  <span className="font-bold text-cyan-300">
+                    {hoveredGroundIndex === 0 ? 'ROUTINE FLARE' : hoveredGroundIndex === 1 ? 'UNCONTAINED CHEMICAL FIRE' : hoveredGroundIndex === 2 ? 'WILDLAND ADVANCE' : hoveredGroundIndex === 3 ? 'AGRICULTURAL BURN' : 'UNKNOWN'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -771,26 +831,53 @@ export default function GeoFlareLanding() {
                   Four Radically Different Events
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                  Depending strictly on surrounding infrastructure and operational history, that exact same pixel could be:
+                  Hover over any ground truth event below to test how that exact same pixel shifts operational meaning:
                 </p>
               </div>
 
               <div className="space-y-2.5 font-mono text-xs">
-                <div className="p-2.5 rounded bg-white/[0.02] border border-white/5 flex justify-between items-center">
-                  <span className="text-white">A permitted refinery flare stack</span>
-                  <span className="text-cyan-400 text-[11px]">→ Routine / Suppress</span>
+                <div 
+                  onMouseEnter={() => setHoveredGroundIndex(0)}
+                  onMouseLeave={() => setHoveredGroundIndex(null)}
+                  className={`p-3 rounded border transition-all cursor-pointer flex justify-between items-center ${
+                    hoveredGroundIndex === 0 ? 'bg-cyan-500/20 border-cyan-400 shadow-[0_0_15px_rgba(56,189,248,0.3)]' : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="text-white font-semibold">A permitted refinery flare stack</span>
+                  <span className="text-cyan-400 text-[11px] font-bold">→ Routine / Suppress</span>
                 </div>
-                <div className="p-2.5 rounded bg-white/[0.02] border border-white/5 flex justify-between items-center">
-                  <span className="text-white">An uncontrolled chemical storage fire</span>
-                  <span className="text-red-400 text-[11px]">→ Plant Evacuation</span>
+
+                <div 
+                  onMouseEnter={() => setHoveredGroundIndex(1)}
+                  onMouseLeave={() => setHoveredGroundIndex(null)}
+                  className={`p-3 rounded border transition-all cursor-pointer flex justify-between items-center ${
+                    hoveredGroundIndex === 1 ? 'bg-red-500/20 border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="text-white font-semibold">An uncontrolled chemical storage fire</span>
+                  <span className="text-red-400 text-[11px] font-bold">→ Plant Evacuation</span>
                 </div>
-                <div className="p-2.5 rounded bg-white/[0.02] border border-white/5 flex justify-between items-center">
-                  <span className="text-white">A fast-moving wildland perimeter</span>
-                  <span className="text-amber-400 text-[11px]">→ Emergency Dispatch</span>
+
+                <div 
+                  onMouseEnter={() => setHoveredGroundIndex(2)}
+                  onMouseLeave={() => setHoveredGroundIndex(null)}
+                  className={`p-3 rounded border transition-all cursor-pointer flex justify-between items-center ${
+                    hoveredGroundIndex === 2 ? 'bg-amber-500/20 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="text-white font-semibold">A fast-moving wildland perimeter</span>
+                  <span className="text-amber-400 text-[11px] font-bold">→ Emergency Dispatch</span>
                 </div>
-                <div className="p-2.5 rounded bg-white/[0.02] border border-white/5 flex justify-between items-center">
-                  <span className="text-white">A seasonal crop stubble burn</span>
-                  <span className="text-emerald-400 text-[11px]">→ Permitted Land Use</span>
+
+                <div 
+                  onMouseEnter={() => setHoveredGroundIndex(3)}
+                  onMouseLeave={() => setHoveredGroundIndex(null)}
+                  className={`p-3 rounded border transition-all cursor-pointer flex justify-between items-center ${
+                    hoveredGroundIndex === 3 ? 'bg-emerald-500/20 border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-white/[0.02] border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="text-white font-semibold">A seasonal crop stubble burn</span>
+                  <span className="text-emerald-400 text-[11px] font-bold">→ Permitted Land Use</span>
                 </div>
               </div>
             </div>
@@ -823,15 +910,16 @@ export default function GeoFlareLanding() {
             <div className="p-4 border-b border-white/10 bg-white/[0.02] grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 onClick={() => setActiveLayers(['thermal'])}
-                className={`p-3 rounded-lg text-left transition-all border cursor-pointer ${
+                className={`relative overflow-hidden p-3 rounded-lg text-left transition-all border cursor-pointer ${
                   activeLayers.length === 1
                     ? 'bg-amber-500/15 border-amber-500/60 text-white shadow-lg'
                     : 'bg-white/[0.02] border-white/5 text-slate-400 hover:border-white/20'
                 }`}
               >
+                {activeLayers.length === 1 && <div className="border-beam" />}
                 <div className="flex items-center justify-between font-mono text-[10px] text-amber-400 font-bold mb-1">
                   <span>STAGE 01</span>
-                  <span>18% CONFIDENCE</span>
+                  <AnimatedNumber value={18} />
                 </div>
                 <div className="font-bold text-xs text-white">1. Raw Thermal Detection</div>
                 <div className="text-[11px] text-slate-400 font-mono mt-0.5">375m MWIR Pixel (1,120°C)</div>
@@ -839,15 +927,16 @@ export default function GeoFlareLanding() {
 
               <button
                 onClick={() => setActiveLayers(['thermal', 'infrastructure'])}
-                className={`p-3 rounded-lg text-left transition-all border cursor-pointer ${
+                className={`relative overflow-hidden p-3 rounded-lg text-left transition-all border cursor-pointer ${
                   activeLayers.includes('infrastructure') && !activeLayers.includes('history')
                     ? 'bg-sky-500/15 border-sky-500/60 text-white shadow-lg'
                     : 'bg-white/[0.02] border-white/5 text-slate-400 hover:border-white/20'
                 }`}
               >
+                {activeLayers.includes('infrastructure') && !activeLayers.includes('history') && <div className="border-beam" />}
                 <div className="flex items-center justify-between font-mono text-[10px] text-sky-400 font-bold mb-1">
                   <span>STAGE 02</span>
-                  <span>65% CONFIDENCE</span>
+                  <AnimatedNumber value={65} />
                 </div>
                 <div className="font-bold text-xs text-white">2. Infrastructure Registry</div>
                 <div className="text-[11px] text-slate-400 font-mono mt-0.5">+ Deer Park SEZ Polygon</div>
@@ -855,15 +944,16 @@ export default function GeoFlareLanding() {
 
               <button
                 onClick={() => setActiveLayers(['thermal', 'infrastructure', 'history'])}
-                className={`p-3 rounded-lg text-left transition-all border cursor-pointer ${
+                className={`relative overflow-hidden p-3 rounded-lg text-left transition-all border cursor-pointer ${
                   activeLayers.includes('history')
                     ? 'bg-emerald-500/15 border-emerald-500/60 text-white shadow-lg'
                     : 'bg-white/[0.02] border-white/5 text-slate-400 hover:border-white/20'
                 }`}
               >
+                {activeLayers.includes('history') && <div className="border-beam" />}
                 <div className="flex items-center justify-between font-mono text-[10px] text-emerald-400 font-bold mb-1">
                   <span>STAGE 03</span>
-                  <span>99.4% CONFIDENCE</span>
+                  <AnimatedNumber value={99.4} />
                 </div>
                 <div className="font-bold text-xs text-white">3. 180-Day Recurrence Audit</div>
                 <div className="text-[11px] text-slate-400 font-mono mt-0.5">+ Flare Stack Baseline</div>
@@ -917,11 +1007,15 @@ export default function GeoFlareLanding() {
                 {/* Center Visual Map Overlays */}
                 <div className="relative inset-0 my-auto flex items-center justify-center pointer-events-none z-10">
                   
-                  {/* Stage 1: Raw Thermal Infrared Pixel */}
+                  {/* Stage 1: Raw Thermal Infrared Pixel with Target Lock Flash Ring */}
                   <div className="relative flex items-center justify-center">
                     <div className="w-24 h-24 rounded-full bg-amber-500/35 blur-xl animate-pulse" />
                     <div className="w-10 h-10 rounded-full bg-amber-400/70 blur-md absolute" />
-                    <div className="w-4 h-4 rounded-full bg-white shadow-[0_0_20px_#ffffff] absolute" />
+                    <div className="w-4 h-4 rounded-full bg-white shadow-[0_0_20px_#ffffff] absolute z-10">
+                      {activeLayers.includes('history') && (
+                        <div className="absolute -inset-3 border-2 border-emerald-400 rounded-full animate-ping opacity-90" />
+                      )}
+                    </div>
                     
                     {!activeLayers.includes('infrastructure') && (
                       <div className="absolute top-12 bg-amber-950/90 border border-amber-500/60 text-amber-300 font-mono text-[10px] px-2.5 py-1 rounded whitespace-nowrap shadow-xl">
@@ -930,10 +1024,24 @@ export default function GeoFlareLanding() {
                     )}
                   </div>
 
-                  {/* Stage 2: Cadastral Plant Boundary Polygon Overlay */}
+                  {/* Stage 2: Cadastral Plant Boundary Polygon Overlay with SVG stroke-dashoffset CAD Draw */}
                   {activeLayers.includes('infrastructure') && (
-                    <div className="absolute w-72 h-48 border-2 border-cyan-400/80 border-dashed rounded-lg bg-cyan-500/10 transition-all flex flex-col justify-between p-3 pointer-events-none">
-                      <div className="flex justify-between items-start font-mono text-[9px]">
+                    <div className="absolute w-72 h-48 rounded-lg bg-cyan-500/10 transition-all flex flex-col justify-between p-3 pointer-events-none z-20">
+                      <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+                        <rect
+                          x="0"
+                          y="0"
+                          width="100%"
+                          height="100%"
+                          rx="8"
+                          fill="none"
+                          stroke="#38bdf8"
+                          strokeWidth="2"
+                          strokeDasharray="12 6"
+                          className="animate-cad-draw"
+                        />
+                      </svg>
+                      <div className="flex justify-between items-start font-mono text-[9px] relative z-10">
                         <span className="bg-black/90 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/40 font-bold">
                           REGISTERED CADASTRAL PERIMETER
                         </span>
@@ -941,19 +1049,27 @@ export default function GeoFlareLanding() {
                           DEER PARK SEZ (ID: PETRO-TX-84)
                         </span>
                       </div>
-                      <div className="font-mono text-[9px] text-cyan-400 bg-black/90 px-2 py-0.5 rounded border border-cyan-500/40 self-end">
+                      <div className="font-mono text-[9px] text-cyan-400 bg-black/90 px-2 py-0.5 rounded border border-cyan-500/40 self-end relative z-10">
                         MATCH: FLARE STACK #2 (0m OFFSET)
                       </div>
                     </div>
                   )}
 
-                  {/* Stage 3: 180-Day Recurrence Radar Ring Overlay */}
+                  {/* Stage 3: 180-Day Recurrence Radar Ring Overlay with Historical Sonar Marker Pings */}
                   {activeLayers.includes('history') && (
-                    <div className="absolute flex items-center justify-center pointer-events-none">
-                      <div className="w-44 h-44 border-2 border-emerald-400/60 rounded-full animate-spin-slow" />
-                      <div className="w-56 h-56 border border-emerald-500/25 rounded-full" />
-                      <div className="absolute top-[-20px] bg-emerald-950/90 border border-emerald-500/60 text-emerald-300 font-mono text-[10px] px-2.5 py-1 rounded whitespace-nowrap shadow-xl font-bold">
-                        180-DAY PERSISTENCE: 148 OF 180 NIGHTS ACTIVE
+                    <div className="absolute flex items-center justify-center pointer-events-none z-25">
+                      <div className="w-48 h-48 border-2 border-emerald-400/80 rounded-full animate-ping opacity-40 absolute" />
+                      <div className="w-44 h-44 border-2 border-emerald-400/60 rounded-full animate-spin-slow relative">
+                        {/* 4 Historical Marker Pings around ellipse perimeter */}
+                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full absolute top-0 left-1/2 -translate-x-1/2 shadow-[0_0_10px_#10b981]" />
+                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full absolute bottom-0 left-1/2 -translate-x-1/2 shadow-[0_0_10px_#10b981]" />
+                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full absolute left-0 top-1/2 -translate-y-1/2 shadow-[0_0_10px_#10b981]" />
+                        <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full absolute right-0 top-1/2 -translate-y-1/2 shadow-[0_0_10px_#10b981]" />
+                      </div>
+                      <div className="w-56 h-56 border border-emerald-500/25 rounded-full absolute" />
+                      <div className="absolute top-[-24px] bg-emerald-950/90 border border-emerald-500/60 text-emerald-300 font-mono text-[10px] px-3 py-1 rounded-full whitespace-nowrap shadow-2xl font-bold flex items-center space-x-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>180-DAY PERSISTENCE: 148 OF 180 NIGHTS ACTIVE</span>
                       </div>
                     </div>
                   )}
@@ -1108,12 +1224,13 @@ export default function GeoFlareLanding() {
                   <button
                     key={sig.id}
                     onClick={() => setSelectedSig(sig)}
-                    className={`w-full text-left p-4 rounded-lg transition-all border cursor-pointer ${
+                    className={`relative overflow-hidden w-full text-left p-4 rounded-lg transition-all border cursor-pointer ${
                       isSelected
                         ? 'bg-white/[0.06] border-cyan-400/50 text-white shadow-lg'
                         : 'bg-white/[0.01] border-white/5 text-slate-400 hover:border-white/20'
                     }`}
                   >
+                    {isSelected && <div className="border-beam" />}
                     <div className="flex justify-between items-center mb-1">
                       <span className="font-bold text-sm text-white">{sig.name}</span>
                       <span
@@ -1153,22 +1270,84 @@ export default function GeoFlareLanding() {
                 <div className="absolute bottom-2 left-2 text-cyan-500/50 font-mono text-[9px]">└ 14-BIT</div>
                 <div className="absolute bottom-2 right-2 text-cyan-500/50 font-mono text-[9px]">┘ 375M RES</div>
 
-                {/* Thermal Gradient Heat Bloom */}
-                <div 
-                  className="w-40 h-40 rounded-full transition-all duration-700 blur-2xl opacity-70 animate-pulse"
-                  style={{ backgroundColor: selectedSig.heatColors[0] }}
-                />
-                <div 
-                  className="absolute w-24 h-24 rounded-full transition-all duration-700 blur-md opacity-85"
-                  style={{ backgroundColor: selectedSig.heatColors[1] }}
-                />
-                <div className="absolute w-5 h-5 rounded-full bg-white shadow-[0_0_18px_#ffffff]" />
+                {/* Morphing FLIR Physical Ground Signature Viewports */}
+                {selectedSig.id === 'flare' && (
+                  <div className="relative flex items-center justify-center animate-flare-flicker">
+                    <div className="w-48 h-48 rounded-full bg-cyan-500/20 flir-heat-bloom" />
+                    <div className="absolute w-24 h-24 rounded-full bg-sky-400/50 flir-heat-bloom" />
+                    <div className="w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_25px_#ffffff] z-10 animate-ping absolute" />
+                    <div className="w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_20px_#ffffff] z-10" />
+                  </div>
+                )}
+
+                {selectedSig.id === 'wildfire' && (
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-64 h-32 rounded-[50%_40%_60%_30%] bg-red-600/35 flir-heat-bloom animate-heat-shimmer" />
+                    <div className="absolute w-44 h-20 rounded-[60%_30%_50%_40%] bg-amber-500/60 flir-heat-bloom" />
+                    <div className="absolute w-20 h-8 rounded-full bg-white blur-sm opacity-90" />
+                    {/* Drifting Ember Sparks */}
+                    <div className="absolute top-4 right-10 w-1.5 h-1.5 rounded-full bg-amber-400 animate-ember-float" />
+                    <div className="absolute top-10 right-16 w-1 h-1 rounded-full bg-red-400 animate-ember-float" style={{ animationDelay: '-0.7s' }} />
+                    <div className="absolute top-2 right-14 w-1.5 h-1.5 rounded-full bg-yellow-300 animate-ember-float" style={{ animationDelay: '-1.4s' }} />
+                  </div>
+                )}
+
+                {selectedSig.id === 'facility-fire' && (
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-56 h-36 border-2 border-red-500/60 border-dashed rounded-lg bg-red-950/40 p-2 flex items-center justify-center">
+                      <div className="w-40 h-24 rounded-md bg-red-500/45 flir-heat-bloom animate-pulse" />
+                      <div className="absolute w-24 h-14 rounded bg-orange-400/70 blur-md" />
+                      <div className="absolute w-6 h-6 rounded-full bg-white shadow-[0_0_25px_#ffffff] z-10" />
+                    </div>
+                  </div>
+                )}
+
+                {selectedSig.id === 'ag-burn' && (
+                  <div className="relative flex items-center justify-center w-full">
+                    <div className="w-72 h-10 rounded-full bg-amber-500/35 flir-heat-bloom animate-pulse" />
+                    <div className="absolute w-60 h-5 rounded-full bg-emerald-400/50 blur-sm" />
+                    <div className="absolute w-40 h-2.5 rounded-full bg-white opacity-80" />
+                  </div>
+                )}
+
+                {selectedSig.id === 'smelter' && (
+                  <div className="relative flex items-center justify-center">
+                    <div className="w-40 h-40 rounded-full bg-purple-600/35 flir-heat-bloom animate-pulse" style={{ animationDuration: '2.2s' }} />
+                    <div className="absolute w-24 h-24 rounded-full bg-purple-400/65 blur-md" />
+                    <div className="absolute w-5 h-5 rounded-full bg-white shadow-[0_0_25px_#e9d5ff] z-10" />
+                  </div>
+                )}
+
+                <div className="hud-scanline" />
 
                 {/* Target Crosshairs */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
                   <div className="w-28 h-28 border border-dashed border-cyan-400 rounded-full animate-spin-slow" />
                   <div className="absolute w-44 h-[1px] bg-cyan-400" />
                   <div className="absolute h-44 w-[1px] bg-cyan-400" />
+                </div>
+
+                {/* Dynamic Multi-Spectral Waveform Frequency Curve */}
+                <div className="absolute bottom-9 left-0 right-0 h-6 opacity-65 pointer-events-none px-4">
+                  <svg className="w-full h-full" viewBox="0 0 300 24" preserveAspectRatio="none">
+                    <path 
+                      d={
+                        selectedSig.id === 'flare'
+                          ? "M 0 12 Q 25 2, 50 22 T 100 2 T 150 22 T 200 2 T 250 22 T 300 12"
+                          : selectedSig.id === 'wildfire'
+                          ? "M 0 18 Q 40 4, 80 20 T 160 2 T 240 18 T 300 12"
+                          : selectedSig.id === 'facility-fire'
+                          ? "M 0 12 L 40 12 L 40 2 L 120 2 L 120 22 L 200 22 L 200 12 L 300 12"
+                          : selectedSig.id === 'ag-burn'
+                          ? "M 0 12 Q 75 8, 150 16 T 300 12"
+                          : "M 0 12 L 60 12 L 60 4 L 120 4 L 120 20 L 180 20 L 180 12 L 300 12"
+                      }
+                      fill="none" 
+                      stroke={selectedSig.verdictColor} 
+                      strokeWidth="1.5"
+                      className="transition-all duration-500"
+                    />
+                  </svg>
                 </div>
 
                 {/* Viewport Meta Legend */}
@@ -1260,18 +1439,19 @@ export default function GeoFlareLanding() {
             {/* Console Body Preview with Rich Multi-Point Radar */}
             <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
               
-              {/* Radar Graphic Viewport with Multiple Audited Targets */}
+              {/* Radar Graphic Viewport with Anduril 360° Radar Sweep Beam & HUD Scanlines */}
               <div className="md:col-span-7 h-64 rounded bg-black/80 border border-white/10 relative overflow-hidden flex items-center justify-center">
                 
-                {/* Concentric Radar Rings */}
-                <div className="absolute w-[200px] h-[200px] border border-cyan-500/15 rounded-full" />
-                <div className="absolute w-[140px] h-[140px] border border-cyan-500/20 rounded-full" />
-                <div className="absolute w-[80px] h-[80px] border border-cyan-500/25 rounded-full" />
-                <div className="absolute w-full h-[1px] bg-cyan-500/10" />
-                <div className="absolute h-full w-[1px] bg-cyan-500/10" />
+                {/* 360-Degree Sweeping Radar Beam */}
+                <div className="radar-sweep-beam" />
+                <div className="hud-scanline" />
 
-                {/* Sweeping Radar Line */}
-                <div className="absolute w-32 h-32 origin-top-left top-1/2 left-1/2 bg-gradient-to-br from-cyan-400/20 to-transparent rounded-tl-full animate-spin-slow pointer-events-none" />
+                {/* Concentric Radar Rings */}
+                <div className="absolute w-[200px] h-[200px] border border-cyan-500/20 rounded-full pointer-events-none" />
+                <div className="absolute w-[140px] h-[140px] border border-cyan-500/25 rounded-full pointer-events-none" />
+                <div className="absolute w-[80px] h-[80px] border border-cyan-500/30 rounded-full pointer-events-none" />
+                <div className="absolute w-full h-[1px] bg-cyan-500/15 pointer-events-none" />
+                <div className="absolute h-full w-[1px] bg-cyan-500/15 pointer-events-none" />
 
                 {/* Active Target Event #8092 */}
                 <div className="absolute top-[35%] left-[55%] group cursor-pointer z-20">
@@ -1332,6 +1512,12 @@ export default function GeoFlareLanding() {
       {/* BEAT 06: CLEAN, SOBER FOOTER / EXIT */}
       <footer className="py-24 px-6 bg-gradient-to-t from-cyan-950/40 via-[#03060A] to-[#03060A] border-t border-white/10 relative overflow-hidden">
         
+        {/* Orbital Atmospheric Horizon Glow Spill (Cosmos & Titan Gate Signature) */}
+        <div 
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[350px] rounded-[100%] opacity-25 pointer-events-none blur-3xl"
+          style={{ background: 'radial-gradient(circle, rgba(14, 165, 233, 0.45) 0%, transparent 70%)' }}
+        />
+
         {/* Background Grid Accent */}
         <div 
           className="absolute inset-0 pointer-events-none opacity-10"
