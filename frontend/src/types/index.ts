@@ -56,6 +56,12 @@ export interface ThermalHotspot {
   validityVerdict?: ValidityDetail['verdict'];
   validityConfidencePct?: number;
   severity: SeverityLevel;
+  /**
+   * NASA FIRMS pixels merged into this one event. The dashboard plots events,
+   * FIRMS plots pixels, so this is what reconciles a count here against a
+   * count on FIRMS' own map.
+   */
+  detectionCount: number;
   historicalOccurrenceCount: number;
   firstSeenDate: string;
   reasoningSteps: ReasoningStep[];

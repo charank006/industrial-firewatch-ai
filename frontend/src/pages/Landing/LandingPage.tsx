@@ -14,7 +14,10 @@ export const LandingPage: React.FC = () => {
   const globeInstanceRef = useRef<any>(null);
 
   // Selected Incident State & Ref to prevent useEffect re-triggering
-  const { filteredHotspots, isLoading, error } = useIntelligence();
+  // `hotspots`, not `filteredHotspots`: the globe is an overview, and
+  // silently inheriting the dashboard's 24h/severity filters was the main
+  // reason its dot count did not match NASA FIRMS' own map.
+  const { hotspots, isLoading, error } = useIntelligence();
 
   const [selectedIncident, setSelectedIncident] = useState<ThermalHotspot | null>(null);
 
@@ -22,12 +25,16 @@ export const LandingPage: React.FC = () => {
   // FIRST render's data - empty, because fires arrive asynchronously. Reading
   // through a ref (and pushing new data in a separate effect) is what stops
   // the globe from staying permanently blank.
-  const hotspotsRef = useRef<ThermalHotspot[]>(filteredHotspots);
-  hotspotsRef.current = filteredHotspots;
+  const hotspotsRef = useRef<ThermalHotspot[]>(hotspots);
+  hotspotsRef.current = hotspots;
 
   // Track marker DOM element refs for visual state updates without globe re-renders
   const markerElementsRef = useRef<Map<string, { core: HTMLDivElement; halo: HTMLDivElement }>>(new Map());
   const hasFramedRef = useRef(false);
+
+  // FIRMS plots one dot per satellite pixel; this plots one per clustered
+  // event. Showing both numbers is what lets a viewer reconcile the two.
+  const pixelCount = hotspots.reduce((total, h) => total + h.detectionCount, 0);
 
   // Telemetry Clock
   const [timeStr, setTimeStr] = useState<string>('');
@@ -81,29 +88,35 @@ export const LandingPage: React.FC = () => {
         container.style.pointerEvents = 'auto';
         container.style.zIndex = '100';
 
-        // Outer Glow / Breathing Animation Layer
+        // Outer glow. Kept deliberately tight and faint: at 20px across 51
+        // detections a few kilometres apart, the halos overlapped into a
+        // single orange smear and the individual points could not be read.
         const halo = document.createElement('div');
         halo.style.position = 'absolute';
         halo.style.borderRadius = '50%';
         halo.className = 'animate-historical-breath';
-        halo.style.width = '20px';
-        halo.style.height = '20px';
-        halo.style.backgroundColor = `${colour}40`;
+        halo.style.width = '8px';
+        halo.style.height = '8px';
+        halo.style.backgroundColor = `${colour}26`;
 
         // Inner Marker Core, sized by radiative power.
         const core = document.createElement('div');
-        const size = Math.max(7, Math.min(16, 7 + Math.sqrt(d.frpMw)));
+        // Smaller than the historical-archive markers this replaced: these
+        // are individual detections, often only a few hundred metres apart,
+        // and at 7-16px they merged into one blob over the AOI.
+        const size = Math.max(3.5, Math.min(8, 3.5 + Math.sqrt(d.frpMw) / 2));
         core.style.borderRadius = '50%';
         core.style.transition = 'all 0.2s ease';
         core.style.width = `${size}px`;
         core.style.height = `${size}px`;
         core.style.backgroundColor = colour;
-        core.style.boxShadow = `0 0 6px ${colour}99`;
+        core.style.boxShadow = `0 0 3px ${colour}CC`;
+        core.style.outline = '0.5px solid rgba(0,0,0,0.55)';
         // A detection we believe is probably not a fire is drawn hollow, so
         // the globe never shows a false alarm as an equal to a real fire.
         if (d.validityVerdict === 'LIKELY_FALSE_ALARM') {
           core.style.backgroundColor = 'transparent';
-          core.style.border = `2px dashed ${colour}`;
+          core.style.border = `1.5px dashed ${colour}`;
           core.style.boxShadow = 'none';
         }
 
@@ -181,9 +194,25 @@ export const LandingPage: React.FC = () => {
 
     // Camera initial position & rotation setup
     world.pointOfView({ lat: 15.0, lng: 45.0, altitude: 0.8 }, 0);
-    world.controls().autoRotate = true;
-    world.controls().autoRotateSpeed = 0.35;
-    world.controls().enableZoom = true;
+    const controls = world.controls();
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.35;
+    controls.enableZoom = true;
+    controls.zoomSpeed = 1.6;
+
+    // OrbitControls' default near limit stops well short of the surface, so
+    // scrolling in could never separate detections a few hundred metres
+    // apart. 101 keeps the camera just outside the globe (radius 100).
+    controls.minDistance = 101;
+    controls.maxDistance = 800;
+
+    // The spin is a nice idle state but fights you the moment you try to look
+    // at something, so any interaction ends it.
+    const stopSpin = () => {
+      controls.autoRotate = false;
+    };
+    controls.addEventListener('start', stopSpin);
+    globeElRef.current.addEventListener('wheel', stopSpin, { passive: true });
 
     // Custom orbital light tweaking
     const scene = world.scene();
@@ -207,6 +236,7 @@ export const LandingPage: React.FC = () => {
     window.addEventListener('resize', handleResize);
 
     return () => {
+      controls.removeEventListener('start', stopSpin);
       window.removeEventListener('resize', handleResize);
       if (globeElRef.current) {
         globeElRef.current.innerHTML = '';
@@ -220,17 +250,17 @@ export const LandingPage: React.FC = () => {
     const world = globeInstanceRef.current;
     if (!world) return;
     markerElementsRef.current.clear();
-    world.htmlElementsData(filteredHotspots);
+    world.htmlElementsData(hotspots);
 
     // Frame the fires the first time a non-empty batch lands, so the AOI is
     // in view instead of the default mid-ocean camera.
-    if (filteredHotspots.length > 0 && !hasFramedRef.current) {
+    if (hotspots.length > 0 && !hasFramedRef.current) {
       hasFramedRef.current = true;
-      const lat = filteredHotspots.reduce((a, h) => a + h.lat, 0) / filteredHotspots.length;
-      const lng = filteredHotspots.reduce((a, h) => a + h.lng, 0) / filteredHotspots.length;
+      const lat = hotspots.reduce((a, h) => a + h.lat, 0) / hotspots.length;
+      const lng = hotspots.reduce((a, h) => a + h.lng, 0) / hotspots.length;
       world.pointOfView({ lat, lng, altitude: 1.1 }, 1600);
     }
-  }, [filteredHotspots]);
+  }, [hotspots]);
 
   // Synchronize Marker Visual States when selectedIncident changes
   useEffect(() => {
@@ -238,11 +268,11 @@ export const LandingPage: React.FC = () => {
       const fire = hotspotsRef.current.find((h) => h.id === id);
       const colour = classColor(fire?.classification ?? 'Unknown Anomaly');
       const isSelected = selectedIncident?.id === id;
-      const size = fire ? Math.max(7, Math.min(16, 7 + Math.sqrt(fire.frpMw))) : 9;
+      const size = fire ? Math.max(3.5, Math.min(8, 3.5 + Math.sqrt(fire.frpMw) / 2)) : 5;
 
       if (isSelected) {
-        el.core.style.width = `${size + 5}px`;
-        el.core.style.height = `${size + 5}px`;
+        el.core.style.width = `${size + 4}px`;
+        el.core.style.height = `${size + 4}px`;
         el.core.style.border = '2px solid #FFFFFF';
         el.core.style.boxShadow = '0 0 14px rgba(255, 255, 255, 0.95)';
         el.halo.style.display = 'none';
@@ -250,9 +280,9 @@ export const LandingPage: React.FC = () => {
         el.core.style.width = `${size}px`;
         el.core.style.height = `${size}px`;
         el.core.style.border =
-          fire?.validityVerdict === 'LIKELY_FALSE_ALARM' ? `2px dashed ${colour}` : 'none';
+          fire?.validityVerdict === 'LIKELY_FALSE_ALARM' ? `1.5px dashed ${colour}` : 'none';
         el.core.style.boxShadow =
-          fire?.validityVerdict === 'LIKELY_FALSE_ALARM' ? 'none' : `0 0 6px ${colour}99`;
+          fire?.validityVerdict === 'LIKELY_FALSE_ALARM' ? 'none' : `0 0 4px ${colour}99`;
         el.halo.style.display = 'block';
       }
     });
@@ -423,7 +453,7 @@ export const LandingPage: React.FC = () => {
               ? 'LOADING LIVE DETECTIONS...'
               : error
                 ? `FEED ERROR: ${error}`
-                : `${filteredHotspots.length} ACTIVE THERMAL ANOMALIES`}
+                : `${hotspots.length} EVENTS FROM ${pixelCount} SATELLITE DETECTIONS`}
           </span>
           <span>&bull;</span>
           <span>NASA FIRMS &bull; VIIRS / MODIS</span>

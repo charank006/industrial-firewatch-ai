@@ -80,10 +80,15 @@ const initialLayers: GISLayerVisibility = {
 };
 
 const initialFilters: FilterState = {
-  region: 'Telangana Active AOI',
+  region: 'Telangana Bounding Box',
   eventType: 'ALL',
   severity: 'ALL',
-  dateRange: '24h',
+  // 24h was hiding most of the pipeline's own data. Polar-orbiting satellites
+  // only pass over the AOI twice a day and FIRMS publishes ~2h later, so after
+  // a quiet night a 24h window from "now" can exclude nearly everything
+  // ingested — 12 of 51 events, in the case that surfaced this. 7d matches
+  // what the system actually holds.
+  dateRange: '7d',
   minFRP: 0,
   landCover: 'ALL',
   searchKeyword: '',

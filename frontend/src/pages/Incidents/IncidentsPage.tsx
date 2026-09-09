@@ -14,6 +14,9 @@ import { facilityDistance } from '../../components/intelligence/formatters';
 export const IncidentsPage: React.FC = () => {
   const { filteredHotspots, filters, setFilters, selectIncidentById } = useIntelligence();
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+
+  // Reconciles this list against FIRMS' own map, which plots raw pixels.
+  const pixelCount = filteredHotspots.reduce((total, h) => total + h.detectionCount, 0);
   const navigate = useNavigate();
 
   const handleRowClick = (id: string) => {
@@ -97,7 +100,11 @@ export const IncidentsPage: React.FC = () => {
         </div>
 
         <div className="text-slate-400">
-          Showing <strong className="text-[#2FA8D8] font-bold">{filteredHotspots.length}</strong> incidents
+          Showing <strong className="text-[#2FA8D8] font-bold">{filteredHotspots.length}</strong> events
+          {' '}from <strong className="text-[#2FA8D8] font-bold">{pixelCount}</strong> satellite detections
+          <span className="block text-[10px] text-slate-500 mt-0.5">
+            NASA FIRMS plots one point per pixel; nearby pixels are clustered into one event here.
+          </span>
         </div>
       </div>
 
