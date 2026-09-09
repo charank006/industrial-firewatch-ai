@@ -115,6 +115,19 @@ EVIDENCE: List[EvidenceTerm] = [
         lambda f: clamp(_get(f, "gas_facilities_within_1km") / 2.0),
     ),
     EvidenceTerm(
+        "no_gas_infrastructure",
+        "No Hydrocarbon Infrastructure",
+        "No gas or petroleum installation mapped within 1 km",
+        # The complement of gas_tags. A flare stack burns hydrocarbon, so
+        # without any gas installation nearby there is nothing to flare -
+        # however recurrent and stable the heat looks. Coal seam fires inside
+        # a mine matched every other flare signal (inside an industrial
+        # parcel, FRP tracking the site median, recurring) and were reported
+        # as "Routine Flare", which reads to an operator as normal and
+        # expected. They are not.
+        lambda f: 1.0 if _get(f, "gas_facilities_within_1km") < 1 else 0.0,
+    ),
+    EvidenceTerm(
         "forest_area",
         "Forest Land Cover",
         "{forest_area_km2:.2f} km2 forest/woodland within radius",

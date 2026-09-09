@@ -71,11 +71,27 @@ INDUSTRIAL_FIRE = features(
     industrial_area_km2=2.33, nearest_factory_m=0.0, factories_within_1km=7,
     gas_facilities_within_1km=0, building_count=6, detection_count=3,
 )
+# A flare stack burns hydrocarbon, so a routine flare has gas infrastructure
+# around it by definition. The fixture used to omit that, which made it
+# indistinguishable from a coal seam fire inside a mine - see
+# PERSISTENT_INDUSTRIAL_NO_GAS below.
 ROUTINE_FLARE = features(
     frp_latest_mw=48.0, inside_industrial=True, industrial_fraction=0.6,
     industrial_area_km2=1.9, nearest_factory_m=0.0, factories_within_1km=5,
+    gas_facilities_within_1km=3, nearest_gas_facility_m=90.0,
     recurrence_count=22, site_median_frp_mw=50.0, duration_hours=96.0,
     day_night="N", detection_count=14,
+)
+
+# Real case from the Telangana data: a fire inside Manuguru II Coal Mine.
+# Matches every flare signal except the one that matters - there is no gas
+# installation anywhere near it.
+PERSISTENT_INDUSTRIAL_NO_GAS = features(
+    frp_latest_mw=2.9, inside_industrial=True, industrial_fraction=0.74,
+    industrial_area_km2=2.32, nearest_factory_m=0.0, factories_within_1km=2,
+    gas_facilities_within_1km=0,
+    recurrence_count=12, site_median_frp_mw=2.5, duration_hours=72.0,
+    day_night="N", detection_count=8,
 )
 FOREST_FIRE = features(
     frp_latest_mw=75.0, forest_fraction=0.62, forest_area_km2=1.95,
@@ -362,3 +378,32 @@ class TestSuggestedAction:
             action = suggested_action(result.prediction, result.severity, case)
             if result.severity in {"LOW", "MEDIUM"}:
                 assert not action.startswith("CRITICAL ALERT"), action
+
+
+class TestFlareRequiresHydrocarbonInfrastructure:
+    """A flare stack burns hydrocarbon. Persistent, stable heat inside an
+    industrial parcel is the flare signature, but without gas infrastructure
+    there is nothing to flare - and calling a coal seam fire a "Routine Flare"
+    tells an operator it is normal and expected. It is not."""
+
+    def test_a_genuine_flare_with_gas_infrastructure_still_reads_as_flare(self):
+        assert classify(ROUTINE_FLARE).prediction == "flare"
+
+    def test_the_same_signature_without_gas_infrastructure_is_not_a_flare(self):
+        result = classify(PERSISTENT_INDUSTRIAL_NO_GAS)
+        assert result.prediction != "flare"
+
+    def test_it_reads_as_an_industrial_heat_source_instead(self):
+        assert classify(PERSISTENT_INDUSTRIAL_NO_GAS).prediction == "industrial"
+
+    def test_removing_the_gas_infrastructure_is_what_flips_it(self):
+        """Isolates the cause: same fixture, gas facilities the only change."""
+        with_gas = classify(features(**{**PERSISTENT_INDUSTRIAL_NO_GAS,
+                                        "gas_facilities_within_1km": 3}))
+        without = classify(PERSISTENT_INDUSTRIAL_NO_GAS)
+        assert with_gas.probabilities["flare"] > without.probabilities["flare"]
+
+    def test_the_reasoning_names_the_missing_infrastructure(self):
+        steps = classify(PERSISTENT_INDUSTRIAL_NO_GAS).reasoning_steps
+        assert any("gas" in s["detail"].lower() or "petroleum" in s["detail"].lower()
+                   for s in steps)
