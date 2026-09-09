@@ -407,3 +407,59 @@ class TestFlareRequiresHydrocarbonInfrastructure:
         steps = classify(PERSISTENT_INDUSTRIAL_NO_GAS).reasoning_steps
         assert any("gas" in s["detail"].lower() or "petroleum" in s["detail"].lower()
                    for s in steps)
+
+
+class TestScrubIsNotForest:
+    """Half this AOI has more scrub, grass or bare ground than tree cover, and
+    WorldCover's "tree cover" class starts at only 10% canopy. Scattered trees
+    over scrubland were classifying as Forest Fire - one disc that was 77% bare
+    ground and 16% tree cover among them."""
+
+    # Real values from FE-000001 (bare ground) and FE-000093 (genuine woodland).
+    SCRUB_WITH_SCATTERED_TREES = features(
+        frp_latest_mw=6.0, forest_fraction=0.16, scrub_grass_fraction=0.77,
+        farmland_fraction=0.01, detection_count=2,
+    )
+    GENUINE_WOODLAND = features(
+        frp_latest_mw=6.0, forest_fraction=0.47, scrub_grass_fraction=0.13,
+        farmland_fraction=0.10, detection_count=2,
+    )
+
+    def test_scrub_with_scattered_trees_is_not_a_forest_fire(self):
+        assert classify(self.SCRUB_WITH_SCATTERED_TREES).prediction != "forest"
+
+    def test_genuine_woodland_is_left_alone(self):
+        """An absolute scrub penalty demoted this one too. The term measures
+        the EXCESS of scrub over trees, so it is silent when trees lead."""
+        assert classify(self.GENUINE_WOODLAND).prediction == "forest"
+
+    def test_the_term_is_zero_whenever_trees_lead(self):
+        from app.services.classifier.scorer import EVIDENCE
+
+        term = next(t for t in EVIDENCE if t.key == "scrub_over_trees")
+        assert term.compute(self.GENUINE_WOODLAND) == 0.0
+        assert term.compute(self.SCRUB_WITH_SCATTERED_TREES) > 0.9
+
+    def test_it_scales_with_how_far_scrub_leads(self):
+        from app.services.classifier.scorer import EVIDENCE
+
+        term = next(t for t in EVIDENCE if t.key == "scrub_over_trees")
+        mild = features(forest_fraction=0.30, scrub_grass_fraction=0.45)
+        heavy = features(forest_fraction=0.10, scrub_grass_fraction=0.75)
+        assert term.compute(mild) < term.compute(heavy)
+
+
+class TestForestSaturation:
+    """The median location in this AOI has 18.5% tree cover. At the old 0.3
+    saturation that collected 62% of the full forest weight."""
+
+    def test_a_marginal_wooded_disc_is_less_confident_than_a_dense_one(self):
+        marginal = features(frp_latest_mw=6.0, forest_fraction=0.30, detection_count=2)
+        dense = features(frp_latest_mw=6.0, forest_fraction=0.85, detection_count=2)
+        assert classify(marginal).probabilities["forest"] < classify(dense).probabilities["forest"]
+
+    def test_dense_woodland_still_saturates(self):
+        from app.services.classifier.scorer import EVIDENCE
+
+        term = next(t for t in EVIDENCE if t.key == "forest_area")
+        assert term.compute(features(forest_fraction=0.85)) == 1.0

@@ -137,10 +137,35 @@ EVIDENCE: List[EvidenceTerm] = [
         lambda f: clamp(_get(f, "builtup_fraction") / 0.4),
     ),
     EvidenceTerm(
+        "scrub_over_trees",
+        "Scrub Exceeds Woodland",
+        "{scrub_grass_fraction:.0%} scrub, grass or bare ground against "
+        "{forest_fraction:.0%} tree cover",
+        # Comparative, not absolute. Half the AOI has more scrub than tree
+        # cover, and WorldCover's "tree cover" class starts at 10% canopy, so
+        # scattered trees over scrubland were reading as forest: a disc that
+        # was 77% bare ground and 16% tree cover classified as Forest Fire.
+        #
+        # An absolute scrub penalty over-corrected, demoting genuinely wooded
+        # events. Measuring the EXCESS of scrub over trees leaves those alone
+        # (the term is zero whenever trees lead) and only speaks where scrub
+        # actually dominates.
+        lambda f: clamp(
+            (_get(f, "scrub_grass_fraction") - _get(f, "forest_fraction")) / 0.5
+        ),
+    ),
+    EvidenceTerm(
         "forest_area",
         "Forest Land Cover",
         "{forest_area_km2:.2f} km2 forest/woodland within radius",
-        lambda f: clamp(_get(f, "forest_fraction") / 0.3),
+        # 0.4, chosen by sweeping 0.3/0.4/0.5 over every stored feature vector
+        # and scoring each against WorldCover's own dominant class. 0.3 recalls
+        # every wooded event but misses 8 cropland ones; 0.5 is the mirror
+        # image. 0.4 is the balanced point: 28/30 and 55/58.
+        #
+        # The old 0.3 was far too generous for this AOI - the median location
+        # has 18.5% tree cover and was collecting 62% of the full forest weight.
+        lambda f: clamp(_get(f, "forest_fraction") / 0.4),
     ),
     EvidenceTerm(
         "farmland_area",
