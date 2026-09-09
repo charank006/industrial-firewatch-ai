@@ -52,6 +52,21 @@ class Settings(BaseSettings):
     # which is what makes Routine Flare separable from Industrial Fire.
     FIRMS_SOURCES: str = "VIIRS_SNPP_NRT,VIIRS_NOAA20_NRT,VIIRS_NOAA21_NRT,MODIS_NRT"
     FIRMS_DAY_RANGE: int = 1  # 1-10; Phase 2 cold-start seeds with 10
+    # Name of a boundary asset in app/data/aoi/ to clip detections to. FIRMS
+    # only accepts a rectangle, and no rectangle matches a state border - the
+    # Telangana box overlaps Maharashtra. Empty keeps the whole rectangle.
+    AOI_BOUNDARY: str = ""
+
+    # --- ESA WorldCover ----------------------------------------------------
+    # A 10 m global land-cover raster, read as windowed range requests against
+    # the public cloud-optimised GeoTIFF. Supplies the vegetation and water
+    # evidence OpenStreetMap is missing across most of the AOI.
+    WORLDCOVER_ENABLED: bool = True
+    WORLDCOVER_BASE_URL: str = (
+        "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map"
+    )
+    WORLDCOVER_TIMEOUT_S: int = 25
+    WORLDCOVER_MAX_ATTEMPTS: int = 3
 
     # --- Weather (Open-Meteo) --------------------------------------------
     # Forecast endpoint with past_days, NOT archive-api: the archive is
@@ -101,6 +116,44 @@ class Settings(BaseSettings):
     # (Overpass retries across mirrors can run several minutes) so a slow run
     # is never mistaken for a dead one.
     ANALYSIS_STALL_MINUTES: int = 20
+    # Overpass lookups allowed per analysis run; 0 means unlimited.
+    #
+    # This was set to 3 as a throughput guard and it starved the pipeline: a
+    # batch of 5 left 2 events with no OSM at all, and a 60-event bulk run
+    # left 57 without. Those events lost every industrial, gas and factory
+    # signal, so Industrial Fire, Routine Flare and Gas/Oil became
+    # unreachable and the facility monitor had no sites to list.
+    #
+    # The guard was not needed. India yields roughly 140 detections a day and
+    # a batch of 5 runs every 2 minutes, which is 150 events an hour of
+    # capacity against ~6 an hour of demand. Overpass being slow or down is
+    # already handled by its circuit breaker. Left configurable for bulk
+    # backfills, off by default.
+    OSM_MAX_LOOKUPS_PER_RUN: int = 0
+    # Requeue events whose OSM enrichment failed, once Overpass answers again.
+    # Batched so a long outage's backlog drains steadily instead of flooding
+    # the analysis queue the moment the service returns.
+    SURROUNDINGS_RETRY_MINUTES: int = 20
+    SURROUNDINGS_RETRY_BATCH: int = 20
+    # --- risk and incident lifecycle --------------------------------------
+    # Score at or above which an event becomes a tracked incident.
+    #
+    # 70 is workable and is what the scale is calibrated against. Reference
+    # scenarios in test_risk_engine.py: a refinery fire beside a town scores
+    # 88.7, a gas blowout 91.3, a large dry-windy forest fire 62.5, a routine
+    # flare at its own normal 42.9, a crop burn in an empty field 23.6.
+    #
+    # It currently selects ZERO of 144 live events. That is the correct
+    # answer, not a broken one - the largest live detection is about 8 MW of
+    # crop burning in an empty field, and nothing in the sample is dangerous.
+    # An empty incident registry when there are no dangerous fires is what
+    # this system should say.
+    RISK_INCIDENT_THRESHOLD: float = 70.0
+    # How long an incident stays under active monitoring.
+    INCIDENT_MONITORING_HOURS: int = 48
+    # How often an active incident's risk is recomputed against fresh weather.
+    RISK_REFRESH_MINUTES: int = 30
+    RISK_REFRESH_BATCH: int = 40
     CONTAINMENT_SWEEP_HOURS: int = 6
     # Skip the first ingest at boot; useful in development so a restart does
     # not immediately spend FIRMS quota.

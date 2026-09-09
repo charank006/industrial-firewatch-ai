@@ -162,11 +162,11 @@ class TestPerEventCommit:
         real_classify = analysis_service.classify_event
         calls = {"n": 0}
 
-        async def failing_classify(db, event, surroundings):
+        async def failing_classify(db, event, surroundings, land_cover=None):
             calls["n"] += 1
             if calls["n"] == 2:
                 raise RuntimeError("scorer blew up")
-            return await real_classify(db, event, surroundings)
+            return await real_classify(db, event, surroundings, land_cover=land_cover)
 
         monkeypatch.setattr(analysis_service, "classify_event", failing_classify)
         results = await analysis_service.drain_pending(limit=3)
@@ -182,7 +182,7 @@ class TestPerEventCommit:
         ids = await seed_events(pipeline_db, count=2)
         monkeypatch.setattr(overpass, "fetch_elements", _no_elements)
 
-        async def always_fails(db, event, surroundings):
+        async def always_fails(db, event, surroundings, land_cover=None):
             raise RuntimeError("scorer blew up")
 
         monkeypatch.setattr(analysis_service, "classify_event", always_fails)
@@ -282,3 +282,37 @@ class TestDegradation:
 
 async def _no_elements(lat, lon, radius_m, client=None):
     return []
+
+
+class TestOverpassBudget:
+    """A budget of 3 against a batch of 5 left two events per batch with no
+    OSM at all, which removed every industrial, gas and factory signal and
+    made Industrial Fire, Routine Flare and Gas/Oil unreachable."""
+
+    async def test_unlimited_by_default(self, pipeline_db, mocked_weather, monkeypatch):
+        monkeypatch.setattr(settings, "OSM_MAX_LOOKUPS_PER_RUN", 0)
+        await seed_events(pipeline_db, count=3)
+        looked_up = {"n": 0}
+
+        async def counting(lat, lon, radius_m, client=None):
+            looked_up["n"] += 1
+            return []
+
+        monkeypatch.setattr(overpass, "fetch_elements", counting)
+        await analysis_service.drain_pending(limit=3)
+        assert looked_up["n"] == 3
+
+    async def test_a_budget_still_caps_a_bulk_backfill(self, pipeline_db, mocked_weather, monkeypatch):
+        monkeypatch.setattr(settings, "OSM_MAX_LOOKUPS_PER_RUN", 1)
+        await seed_events(pipeline_db, count=3)
+        looked_up = {"n": 0}
+
+        async def counting(lat, lon, radius_m, client=None):
+            looked_up["n"] += 1
+            return []
+
+        monkeypatch.setattr(overpass, "fetch_elements", counting)
+        results = await analysis_service.drain_pending(limit=3)
+        assert looked_up["n"] == 1
+        # The other two still complete, on land cover alone.
+        assert len(results) == 3

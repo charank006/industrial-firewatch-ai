@@ -41,6 +41,7 @@ export const CLASS_LABEL: Record<string, EventClassification> = {
   agriculture: 'Agricultural Burning',
   gas_oil: 'Gas/Oil',
   urban: 'Urban',
+  mining: 'Mining / Extraction',
   unknown: 'Unknown Anomaly',
 };
 
@@ -113,6 +114,11 @@ export function adaptFireEvent(event: ApiFireEvent): ThermalHotspot {
     validityVerdict: verdictOrUndefined(event.validity?.verdict),
     validityConfidencePct: event.validity?.confidence_pct,
     severity: oneOf(SEVERITY_VALUES, event.severity, 'MEDIUM'),
+    detectionCount: event.detection_count,
+    riskScore: event.risk_score ?? undefined,
+    riskLevel: event.risk_level ?? undefined,
+    isActionable: event.is_actionable ?? undefined,
+    monitoringUntil: event.monitoring_until ?? undefined,
     historicalOccurrenceCount: event.recurrence_count,
     firstSeenDate: (event.first_detected ?? timestamp).slice(0, 10),
     reasoningSteps: event.reasoning_steps.map(adaptReasoningStep),
@@ -157,10 +163,19 @@ export function dateRangeToSince(range: string, now: Date = new Date()): string 
  * applied to anything; wiring it is additive.
  */
 export const REGION_BBOX: Record<string, string> = {
-  // The AOI the ingest worker actually polls FIRMS for
-  // (backend FIRMS_AOI_BBOX). Anything else returns an empty map until the
-  // AOI is widened, so this is the default.
-  'Telangana Active AOI': '77.2,15.8,81.4,19.95',
+  // The AOI the ingest worker actually polls FIRMS for (backend
+  // FIRMS_AOI_BBOX). Anything else returns an empty map until the AOI is
+  // widened, so this is the default.
+  //
+  // Named for the rectangle, not for Telangana: no rectangle matches a state
+  // border, and this one reaches into Chandrapur district in Maharashtra.
+  // Roughly a fifth of ingested events (Ghugus, Ballarpur, Sakhari) are
+  // across that border, and calling the region "Telangana" reported them as
+  // Telangana fires.
+  // The AOI the ingest worker polls. Detections are clipped to the real
+  // country border before storage, so this box is only a fetch envelope.
+  'India': '68.0,6.0,98.0,36.0',
+  'Telangana Bounding Box': '77.2,15.8,81.4,19.95',
   'Gujarat Industrial Corridor': '68.0,20.0,75.0,25.0',
   'Permian Petrochemical Zone': '-104.5,29.5,-100.5,33.5',
   'Rhine Industrial Belt': '5.8,49.0,9.5,52.0',

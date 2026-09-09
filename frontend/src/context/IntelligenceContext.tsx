@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { fetchFacilities, fetchFireAnalysis, fetchFires } from '../services/api';
+import { MOCK_ALERTS } from '../data/mockAlerts';
+import { MOCK_FACILITIES } from '../data/mockFacilities';
+import { MOCK_HOTSPOTS } from '../data/mockHotspots';
+import { DATA_SOURCE, fetchFacilities, fetchFireAnalysis, fetchFires } from '../services/api';
 import {
   adaptAnalysis,
   adaptFacility,
@@ -11,6 +14,7 @@ import { normalizeClassification } from '../utils/classification';
 import type {
   AlertItem,
   EventClassification,
+  FireAnalysis,
   FilterState,
   FIRMSSyncOptions,
   FIRMSSyncStatus,
@@ -52,11 +56,11 @@ interface IntelligenceContextType {
   metrics: SituationMetrics;
 
   // Data source & API state
-  dataSource: 'api' | 'mock';
+  dataSource: 'mock' | 'api';
   isLoading: boolean;
   error: string | null;
   historyDays: number | null;
-  analysis: any | null;
+  analysis: FireAnalysis | null;
   isAnalysisLoading: boolean;
   refresh: () => void;
 
@@ -85,10 +89,10 @@ const initialLayers: GISLayerVisibility = {
 };
 
 const initialFilters: FilterState = {
-  region: 'Telangana Active AOI',
+  region: 'India',
   eventType: 'ALL',
   severity: 'ALL',
-  dateRange: '24h',
+  dateRange: '7d',
   minFRP: 0,
   landCover: 'ALL',
   searchKeyword: '',
@@ -153,12 +157,17 @@ const mapBackendEventToHotspot = (ev: any): ThermalHotspot => {
   const facDist = typeof ev.facility_distance_km === 'number' ? ev.facility_distance_km : (isPers ? 0.4 : 2.4);
   const facName = ev.nearest_facility_name || (isPers ? 'Industrial Thermal Asset' : 'Regional Agro-Industrial Area');
   const facType = ev.nearest_facility_type || (isPers ? 'Industrial Asset' : 'Regional Buffer Area');
-  const sensorConf = typeof ev.sensor_confidence === 'number' ? ev.sensor_confidence : (typeof ev.confidence === 'number' ? ev.confidence : 85);
-  const mlConf = typeof ev.ml_confidence === 'number' ? ev.ml_confidence : Math.round(prob * 100);
-  const brightness = typeof ev.brightness_k === 'number' ? Number(ev.brightness_k.toFixed(1)) : (typeof ev.brightness === 'number' ? Number(ev.brightness.toFixed(1)) : 332.0);
-  const riskScore = typeof ev.risk_score === 'number' ? ev.risk_score : (isPers ? 28 : Math.min(100, Math.max(10, Math.round(frpMw * 1.5 + (facDist <= 2.5 ? 20 : 5)))));
+  const normalizePctVal = (val: any, fallback: number): number => {
+    if (typeof val !== 'number' || isNaN(val)) return fallback;
+    if (val <= 1.0) return Math.round(val * 100);
+    return Math.min(100, Math.round(val));
+  };
 
-  // Severity derivation
+  const sensorConf = normalizePctVal(ev.sensor_confidence ?? ev.confidence, 85);
+  const mlConf = normalizePctVal(ev.ml_confidence ?? (prob <= 1.0 ? prob * 100 : prob), 85);
+  const brightness = typeof ev.brightness_k === 'number' ? Number(ev.brightness_k.toFixed(1)) : (typeof ev.brightness === 'number' ? Number(ev.brightness.toFixed(1)) : 332.0);
+  const riskScore = normalizePctVal(ev.risk_score, isPers ? 28 : Math.min(100, Math.max(10, Math.round(frpMw * 0.6 + (facDist <= 2.5 ? 20 : 5)))));
+
   const rawSev = (ev.severity || '').toUpperCase();
   let severity: SeverityLevel = 'LOW';
   if (rawSev === 'CRITICAL' || rawSev === 'HIGH' || rawSev === 'MEDIUM' || rawSev === 'LOW') {
@@ -173,7 +182,6 @@ const mapBackendEventToHotspot = (ev: any): ThermalHotspot => {
     severity = 'LOW';
   }
 
-  // Baseline FRP
   let baselineFrp = typeof ev.baseline_frp === 'number' ? ev.baseline_frp : 1.5;
   if (typeof ev.baseline_frp !== 'number') {
     const clsLower = cls.toLowerCase();
@@ -188,7 +196,6 @@ const mapBackendEventToHotspot = (ev: any): ThermalHotspot => {
     }
   }
 
-  // Historical FRP Timeline
   const frpTimeline = Array.isArray(ev.frp_timeline) && ev.frp_timeline.length > 0
     ? ev.frp_timeline
     : generateEventTimeline(ev.id, cls, frpMw, baselineFrp, isPers, ev.last_seen || ev.first_seen);
@@ -212,6 +219,7 @@ const mapBackendEventToHotspot = (ev: any): ThermalHotspot => {
     nearestFacilityType: facType,
     classification: cls,
     severity: severity,
+    detectionCount: ev.detection_count ?? ev.observation_count ?? 1,
     historicalOccurrenceCount: ev.active_days || 1,
     observationCount: ev.observation_count || 1,
     firstSeenDate: ev.first_seen || new Date().toISOString(),
@@ -261,19 +269,25 @@ const mapBackendEventToHotspot = (ev: any): ThermalHotspot => {
 };
 
 export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [hotspots, setHotspots] = useState<ThermalHotspot[]>([]);
-  const [facilities, setFacilities] = useState<IndustrialFacility[]>([]);
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const isApi = DATA_SOURCE === 'api';
 
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [hotspots, setHotspots] = useState<ThermalHotspot[]>(isApi ? [] : MOCK_HOTSPOTS);
+  const [facilities, setFacilities] = useState<IndustrialFacility[]>(isApi ? [] : MOCK_FACILITIES);
+  const [alerts, setAlerts] = useState<AlertItem[]>(MOCK_ALERTS);
+
+  const [isLoading, setIsLoading] = useState<boolean>(isApi);
   const [error, setError] = useState<string | null>(null);
   const [historyDays, setHistoryDays] = useState<number | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const [analysis, setAnalysis] = useState<any | null>(null);
+  const [analysis, setAnalysis] = useState<FireAnalysis | null>(null);
   const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
 
-  const [selectedIncident, setSelectedIncident] = useState<ThermalHotspot | null>(null);
-  const [selectedFacility, setSelectedFacility] = useState<IndustrialFacility | null>(null);
+  const [selectedIncident, setSelectedIncident] = useState<ThermalHotspot | null>(
+    isApi ? null : MOCK_HOTSPOTS[0],
+  );
+  const [selectedFacility, setSelectedFacility] = useState<IndustrialFacility | null>(
+    isApi ? null : MOCK_FACILITIES[0],
+  );
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(true);
 
   // NASA FIRMS Live Sync States
@@ -284,13 +298,11 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [layers, setLayers] = useState<GISLayerVisibility>(initialLayers);
   const [mapMode, setMapMode] = useState<MapMode>('satellite');
-  const [timelineIndex, setTimelineIndex] = useState<number>(0);
+  const [timelineIndex, setTimelineIndex] = useState<number>(Math.max(0, hotspots.length - 1));
 
   const refresh = () => setReloadToken((n) => n + 1);
-
   const { region, dateRange } = filters;
 
-  // Always fetch live API feed
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
@@ -298,14 +310,13 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     (async () => {
       try {
-        // Fetch fires (using bbox if available, or all fires if bbox query returns 0)
         let firesResponse = await fetchFires({
           bbox: regionToBbox(region),
           since: dateRangeToSince(dateRange),
         });
 
         if (!firesResponse?.fires || firesResponse.fires.length === 0) {
-          const allFiresResponse = await fetchFires({ since: dateRangeToSince(dateRange) });
+          const allFiresResponse = await fetchFires({ since: dateRangeToSince(dateRange) }).catch(() => null);
           if (allFiresResponse?.fires && allFiresResponse.fires.length > 0) {
             firesResponse = allFiresResponse;
           }
@@ -333,10 +344,12 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
         });
       } catch (cause) {
         if (!cancelled) {
-          console.error('Live API connection error:', cause);
-          setError(cause instanceof Error ? cause.message : String(cause));
-          setHotspots([]);
-          setFacilities([]);
+          if (isApi) {
+            setError(cause instanceof Error ? cause.message : String(cause));
+          } else {
+            setHotspots(MOCK_HOTSPOTS);
+            setFacilities(MOCK_FACILITIES);
+          }
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -346,9 +359,8 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
     return () => {
       cancelled = true;
     };
-  }, [region, dateRange, reloadToken]);
+  }, [isApi, region, dateRange, reloadToken]);
 
-  // Fetch deep analysis per selected fire event
   const selectedIncidentId = selectedIncident?.id ?? null;
 
   useEffect(() => {
@@ -364,8 +376,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
       .then((payload) => {
         if (!cancelled) setAnalysis(adaptAnalysis(payload));
       })
-      .catch((err) => {
-        console.warn('Fire analysis fetch failed:', err);
+      .catch(() => {
         if (!cancelled) setAnalysis(null);
       })
       .finally(() => {
@@ -377,10 +388,9 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [selectedIncidentId]);
 
-  // Fetch Live Status & Events
   const fetchFirmsStatus = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/firms/status');
+      const res = await fetch('/api/firms/status');
       if (res.ok) {
         const data = await res.json();
         setFirmsStatus(data);
@@ -390,7 +400,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const refreshEvents = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/events');
+      const res = await fetch('/api/events');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -405,7 +415,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const syncNASAData = async (options?: FIRMSSyncOptions) => {
     setIsSyncingFirms(true);
     try {
-      const res = await fetch('http://localhost:8000/api/firms/sync', {
+      const res = await fetch('/api/firms/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(options || {
@@ -430,62 +440,14 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   };
 
-  // Live Backend Fetch & WebSocket Connection with Auto-Retry & Polling
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let pollInterval: any = null;
-
-    const loadData = async () => {
-      await refreshEvents();
-      await fetchFirmsStatus();
-    };
-
-    loadData();
-
-    // Auto-poll every 30 seconds for background telemetry updates
-    pollInterval = setInterval(loadData, 30000);
-
-    // WebSocket subscription for instant telemetry push
-    try {
-      ws = new WebSocket('ws://localhost:8000/ws/events');
-      ws.onmessage = (event) => {
-        try {
-          const raw = JSON.parse(event.data);
-          if (raw.type === 'THERMAL_EVENT_UPDATE' && raw.data) {
-            const newHotspot = mapBackendEventToHotspot(raw.data);
-            setHotspots((prev) => {
-              const existingIdx = prev.findIndex((h) => h.id === newHotspot.id);
-              if (existingIdx >= 0) {
-                const updated = [...prev];
-                updated[existingIdx] = newHotspot;
-                return updated;
-              }
-              return [newHotspot, ...prev];
-            });
-          } else if (raw.type === 'BATCH_SYNC_COMPLETE') {
-            loadData();
-          }
-        } catch {}
-      };
-    } catch {}
-
-    return () => {
-      if (pollInterval) clearInterval(pollInterval);
-      if (ws) ws.close();
-    };
-  }, []);
-
-  // Dynamic Filtering Logic
   const filteredHotspots = useMemo(() => {
     return hotspots.filter((h) => {
-      // Classification matching (robust against snake_case / Title Case)
       if (filters.eventType !== 'ALL') {
         const targetCls = normalizeClassification(filters.eventType);
         const eventCls = normalizeClassification(h.classification);
         if (targetCls !== eventCls) return false;
       }
 
-      // Severity matching: HIGH includes both HIGH and CRITICAL high-risk categories
       if (filters.severity !== 'ALL') {
         if (filters.severity === 'HIGH') {
           if (h.severity !== 'HIGH' && h.severity !== 'CRITICAL') return false;
@@ -511,7 +473,6 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
     });
   }, [hotspots, filters]);
 
-  // Dynamically Compute Metrics from Filtered Live Dataset
   const metrics = useMemo<SituationMetrics>(() => {
     const totalDetected = hotspots.length;
     const highPriorityCount = hotspots.filter((h) => h.severity === 'HIGH' || h.severity === 'CRITICAL').length;
@@ -528,6 +489,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
       'Agricultural Burning': 0,
       'Gas/Oil': 0,
       'Urban': 0,
+      'Mining / Extraction': 0,
       'Unknown Anomaly': 0,
     };
 
@@ -552,7 +514,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
       eventMix,
       latestHotspot,
     };
-  }, [hotspots]);
+  }, [hotspots, filteredHotspots]);
 
   const selectIncidentById = (id: string) => {
     const found = hotspots.find((h) => h.id === id);
@@ -600,7 +562,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
         mapMode,
         timelineIndex,
         metrics,
-        dataSource: 'api',
+        dataSource: DATA_SOURCE,
         isLoading,
         error,
         historyDays,

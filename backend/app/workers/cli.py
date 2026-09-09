@@ -3,6 +3,7 @@
     python -m app.workers.cli backfill [days]   seed history (FIRMS caps at 10)
     python -m app.workers.cli ingest            one ingest pass
     python -m app.workers.cli analyse [limit]   enrich pending events
+    python -m app.workers.cli retry-osm [limit] requeue events whose OSM fetch failed
     python -m app.workers.cli status            recent ingest history
 
 Useful when the API is not running, and for the cold start: recurrence only
@@ -16,7 +17,13 @@ import sys
 
 from app.config import settings
 from app.database.connection import dispose_engine
-from app.workers.jobs import analysis_job, backfill, ingest_job, last_ingest_run
+from app.workers.jobs import (
+    analysis_job,
+    backfill,
+    ingest_job,
+    last_ingest_run,
+    surroundings_retry_job,
+)
 
 
 async def _main(argv: list[str]) -> int:
@@ -38,6 +45,8 @@ async def _main(argv: list[str]) -> int:
             print(json.dumps(await ingest_job(int(argument) if argument else None), indent=2, default=str))
         elif command == "analyse":
             print(json.dumps(await analysis_job(int(argument) if argument else None), indent=2, default=str))
+        elif command == "retry-osm":
+            print(json.dumps(await surroundings_retry_job(int(argument) if argument else None), indent=2, default=str))
         elif command == "status":
             run = await last_ingest_run()
             if run is None:

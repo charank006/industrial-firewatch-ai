@@ -35,3 +35,7 @@ pytest>=8.1.1
 pytest-asyncio>=0.23.6
 respx>=0.21.0
 freezegun>=1.4.0
+
+# ESA WorldCover land-cover raster. Read as windowed range requests against
+# the public cloud-optimised GeoTIFF, so no tile is ever downloaded whole.
+rasterio>=1.3.9

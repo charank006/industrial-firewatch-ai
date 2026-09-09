@@ -155,7 +155,7 @@ export const IntelligenceDrawer: React.FC = () => {
             setDispatchStatus('IDLE');
             setIsDispatchModalOpen(true);
           }}
-        />
+              severity={selectedIncident?.severity}/>
 
         {/* Recommended Action Card */}
         <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg space-y-1 text-xs font-mono">

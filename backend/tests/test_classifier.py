@@ -71,11 +71,27 @@ INDUSTRIAL_FIRE = features(
     industrial_area_km2=2.33, nearest_factory_m=0.0, factories_within_1km=7,
     gas_facilities_within_1km=0, building_count=6, detection_count=3,
 )
+# A flare stack burns hydrocarbon, so a routine flare has gas infrastructure
+# around it by definition. The fixture used to omit that, which made it
+# indistinguishable from a coal seam fire inside a mine - see
+# PERSISTENT_INDUSTRIAL_NO_GAS below.
 ROUTINE_FLARE = features(
     frp_latest_mw=48.0, inside_industrial=True, industrial_fraction=0.6,
     industrial_area_km2=1.9, nearest_factory_m=0.0, factories_within_1km=5,
+    gas_facilities_within_1km=3, nearest_gas_facility_m=90.0,
     recurrence_count=22, site_median_frp_mw=50.0, duration_hours=96.0,
     day_night="N", detection_count=14,
+)
+
+# Real case from the Telangana data: a fire inside Manuguru II Coal Mine.
+# Matches every flare signal except the one that matters - there is no gas
+# installation anywhere near it.
+PERSISTENT_INDUSTRIAL_NO_GAS = features(
+    frp_latest_mw=2.9, inside_industrial=True, industrial_fraction=0.74,
+    industrial_area_km2=2.32, nearest_factory_m=0.0, factories_within_1km=2,
+    gas_facilities_within_1km=0,
+    recurrence_count=12, site_median_frp_mw=2.5, duration_hours=72.0,
+    day_night="N", detection_count=8,
 )
 FOREST_FIRE = features(
     frp_latest_mw=75.0, forest_fraction=0.62, forest_area_km2=1.95,
@@ -362,3 +378,148 @@ class TestSuggestedAction:
             action = suggested_action(result.prediction, result.severity, case)
             if result.severity in {"LOW", "MEDIUM"}:
                 assert not action.startswith("CRITICAL ALERT"), action
+
+
+class TestFlareRequiresHydrocarbonInfrastructure:
+    """A flare stack burns hydrocarbon. Persistent, stable heat inside an
+    industrial parcel is the flare signature, but without gas infrastructure
+    there is nothing to flare - and calling a coal seam fire a "Routine Flare"
+    tells an operator it is normal and expected. It is not."""
+
+    def test_a_genuine_flare_with_gas_infrastructure_still_reads_as_flare(self):
+        assert classify(ROUTINE_FLARE).prediction == "flare"
+
+    def test_the_same_signature_without_gas_infrastructure_is_not_a_flare(self):
+        result = classify(PERSISTENT_INDUSTRIAL_NO_GAS)
+        assert result.prediction != "flare"
+
+    def test_it_reads_as_an_industrial_heat_source_instead(self):
+        assert classify(PERSISTENT_INDUSTRIAL_NO_GAS).prediction == "industrial"
+
+    def test_removing_the_gas_infrastructure_is_what_flips_it(self):
+        """Isolates the cause: same fixture, gas facilities the only change."""
+        with_gas = classify(features(**{**PERSISTENT_INDUSTRIAL_NO_GAS,
+                                        "gas_facilities_within_1km": 3}))
+        without = classify(PERSISTENT_INDUSTRIAL_NO_GAS)
+        assert with_gas.probabilities["flare"] > without.probabilities["flare"]
+
+    def test_the_reasoning_names_the_missing_infrastructure(self):
+        steps = classify(PERSISTENT_INDUSTRIAL_NO_GAS).reasoning_steps
+        assert any("gas" in s["detail"].lower() or "petroleum" in s["detail"].lower()
+                   for s in steps)
+
+
+class TestScrubIsNotForest:
+    """Half this AOI has more scrub, grass or bare ground than tree cover, and
+    WorldCover's "tree cover" class starts at only 10% canopy. Scattered trees
+    over scrubland were classifying as Forest Fire - one disc that was 77% bare
+    ground and 16% tree cover among them."""
+
+    # Real values from FE-000001 (bare ground) and FE-000093 (genuine woodland).
+    SCRUB_WITH_SCATTERED_TREES = features(
+        frp_latest_mw=6.0, forest_fraction=0.16, scrub_grass_fraction=0.77,
+        farmland_fraction=0.01, detection_count=2,
+    )
+    GENUINE_WOODLAND = features(
+        frp_latest_mw=6.0, forest_fraction=0.47, scrub_grass_fraction=0.13,
+        farmland_fraction=0.10, detection_count=2,
+    )
+
+    def test_scrub_with_scattered_trees_is_not_a_forest_fire(self):
+        assert classify(self.SCRUB_WITH_SCATTERED_TREES).prediction != "forest"
+
+    def test_genuine_woodland_is_left_alone(self):
+        """An absolute scrub penalty demoted this one too. The term measures
+        the EXCESS of scrub over trees, so it is silent when trees lead."""
+        assert classify(self.GENUINE_WOODLAND).prediction == "forest"
+
+    def test_the_term_is_zero_whenever_trees_lead(self):
+        from app.services.classifier.scorer import EVIDENCE
+
+        term = next(t for t in EVIDENCE if t.key == "scrub_over_trees")
+        assert term.compute(self.GENUINE_WOODLAND) == 0.0
+        assert term.compute(self.SCRUB_WITH_SCATTERED_TREES) > 0.9
+
+    def test_it_scales_with_how_far_scrub_leads(self):
+        from app.services.classifier.scorer import EVIDENCE
+
+        term = next(t for t in EVIDENCE if t.key == "scrub_over_trees")
+        mild = features(forest_fraction=0.30, scrub_grass_fraction=0.45)
+        heavy = features(forest_fraction=0.10, scrub_grass_fraction=0.75)
+        assert term.compute(mild) < term.compute(heavy)
+
+
+class TestForestSaturation:
+    """The median location in this AOI has 18.5% tree cover. At the old 0.3
+    saturation that collected 62% of the full forest weight."""
+
+    def test_a_marginal_wooded_disc_is_less_confident_than_a_dense_one(self):
+        marginal = features(frp_latest_mw=6.0, forest_fraction=0.30, detection_count=2)
+        dense = features(frp_latest_mw=6.0, forest_fraction=0.85, detection_count=2)
+        assert classify(marginal).probabilities["forest"] < classify(dense).probabilities["forest"]
+
+    def test_dense_woodland_still_saturates(self):
+        from app.services.classifier.scorer import EVIDENCE
+
+        term = next(t for t in EVIDENCE if t.key == "forest_area")
+        assert term.compute(features(forest_fraction=0.85)) == 1.0
+
+
+class TestMiningExtraction:
+    """Quarry and mine tags were already extracted but had nowhere to go, so a
+    coal seam fire inside an open-cast mine read as a generic factory fire:
+    the quarry is industrial land, every industrial term fires, and nothing
+    distinguishes it. Mining is its own class now."""
+
+    COAL_MINE = features(
+        frp_latest_mw=6.0, inside_industrial=True, industrial_fraction=0.6,
+        industrial_area_km2=1.9, mines_within_1km=2, nearest_mine_m=0.0,
+        gas_facilities_within_1km=0, recurrence_count=8, detection_count=5,
+    )
+
+    def test_a_fire_at_a_mine_reads_as_mining(self):
+        assert classify(self.COAL_MINE).prediction == "mining"
+
+    def test_the_same_site_without_mine_tags_is_not_mining(self):
+        """Isolates the cause: identical fixture, mine signal removed."""
+        no_mine = features(**{**self.COAL_MINE, "mines_within_1km": 0, "nearest_mine_m": None})
+        assert classify(no_mine).prediction != "mining"
+
+    def test_gas_infrastructure_still_pulls_toward_gas_oil(self):
+        """A site with both a quarry and gas installations is genuinely
+        ambiguous, so this asserts the signals compose rather than picking a
+        winner the evidence does not justify: adding gas infrastructure must
+        raise Gas/Oil's share."""
+        without = classify(self.COAL_MINE).probabilities["gas_oil"]
+        with_gas = classify(features(**{
+            **self.COAL_MINE, "gas_facilities_within_1km": 4,
+            "nearest_gas_facility_m": 80.0,
+        })).probabilities["gas_oil"]
+        assert with_gas > without
+
+    def test_a_refinery_with_no_mine_still_reads_as_gas_oil(self):
+        refinery = features(
+            frp_latest_mw=40.0, inside_industrial=True, industrial_fraction=0.6,
+            industrial_area_km2=1.9, gas_facilities_within_1km=4,
+            nearest_gas_facility_m=80.0, mines_within_1km=0, detection_count=3,
+        )
+        assert classify(refinery).prediction == "gas_oil"
+
+    def test_it_does_not_steal_agriculture(self):
+        cropland = features(frp_latest_mw=6.0, farmland_fraction=0.7,
+                            mines_within_1km=0, detection_count=2)
+        assert classify(cropland).prediction == "agriculture"
+
+    def test_the_class_is_registered_everywhere_it_must_be(self):
+        """A class present in the roster but missing from a label, hazard or
+        pollutant map fails at runtime, not at import."""
+        from app.services.classifier.scorer import CLASS_LABEL, load_rules
+        from app.services.impact_service import POTENTIAL_POLLUTANTS
+        from app.services.risk_service import CLASS_HAZARD
+
+        rules, _ = load_rules()
+        for cls in rules["classes"]:
+            assert cls in CLASS_LABEL, cls
+            assert cls in CLASS_HAZARD, cls
+            assert cls in POTENTIAL_POLLUTANTS, cls
+            assert cls in rules["bias"], cls

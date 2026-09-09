@@ -8,6 +8,8 @@ import pytest_asyncio
 import respx
 from fastapi.testclient import TestClient
 
+from sqlalchemy import text
+
 from app.config import settings
 from app.main import app
 from app.models.models import FireEvent, SeedRun
@@ -38,6 +40,8 @@ class TestSchedulerConfiguration:
         assert {job.id for job in sched.get_jobs()} == {
             "firms_ingest",
             "event_analysis",
+            "risk_refresh",
+            "surroundings_retry",
             "containment_sweep",
         }
 
@@ -65,11 +69,25 @@ class TestSchedulerConfiguration:
         monkeypatch.setattr(settings, "SCHEDULER_ENABLED", True)
         scheduler.start_scheduler()
         status = scheduler.job_status()
-        assert len(status) == 3
+        assert len(status) == 5
         assert all(entry["next_run"] for entry in status)
 
 
+# The row above is in Surat, Gujarat. It stays there deliberately: these
+# tests are about the ingest job's bookkeeping, not about the AOI, so they
+# switch clipping off explicitly rather than depending on whichever boundary
+# .env happens to configure. TestAoiClipping below covers the clip itself.
+TELANGANA_CSV = """country_id,latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight
+IND,17.38500,78.48600,347.2,0.42,0.38,2026-09-08,0830,N,VIIRS,h,2.0NRT,298.1,184.6,D
+IND,19.93100,79.12200,340.1,0.44,0.39,2026-09-08,0830,N20,VIIRS,n,2.0NRT,295.0,42.0,D
+"""
+
+
 class TestIngestJob:
+    @pytest_asyncio.fixture(autouse=True)
+    def _no_clipping(self, monkeypatch):
+        monkeypatch.setattr(settings, "AOI_BOUNDARY", "")
+
     async def test_records_a_successful_run(self, db, monkeypatch):
         monkeypatch.setattr(settings, "NASA_FIRMS_MAP_KEY", "KEY123")
         monkeypatch.setattr(jobs, "get_sessionmaker", lambda: (lambda: _Session(db)))
@@ -251,3 +269,41 @@ class TestCredentialLeakage:
 
         url = build_area_url("VIIRS_SNPP_NRT", (68.0, 20.0, 75.0, 25.0), 1, "SECRET_KEY")
         assert "SECRET_KEY" in url
+
+
+class TestIngestClipsToTheBoundary:
+    """FIRMS can only be queried by a rectangle, and the Telangana box overlaps
+    Chandrapur district in Maharashtra. Clipping happens before storage, so a
+    Maharashtra fire is never recorded, classified and reported as a Telangana
+    one - which is exactly what had been happening to a fifth of the events."""
+
+    async def test_a_detection_outside_the_boundary_is_not_stored(self, db, monkeypatch):
+        monkeypatch.setattr(settings, "NASA_FIRMS_MAP_KEY", "KEY123")
+        monkeypatch.setattr(settings, "AOI_BOUNDARY", "telangana")
+        monkeypatch.setattr(jobs, "get_sessionmaker", lambda: (lambda: _Session(db)))
+
+        with respx.mock(assert_all_called=False) as mock:
+            mock.get(url__regex=r".*firms\.modaps.*/api/area/csv/.*").mock(
+                return_value=httpx.Response(200, text=TELANGANA_CSV)
+            )
+            result = await jobs.ingest_job()
+
+        # Hyderabad kept, Ghugus dropped - both inside the FIRMS rectangle.
+        assert result["ok"] is True
+        assert result["detections_inserted"] == 1
+
+        rows = (await db.execute(text("SELECT latitude FROM fire_detections"))).scalars().all()
+        assert [round(float(lat), 2) for lat in rows] == [17.39]
+
+    async def test_an_unset_boundary_keeps_the_whole_rectangle(self, db, monkeypatch):
+        monkeypatch.setattr(settings, "NASA_FIRMS_MAP_KEY", "KEY123")
+        monkeypatch.setattr(settings, "AOI_BOUNDARY", "")
+        monkeypatch.setattr(jobs, "get_sessionmaker", lambda: (lambda: _Session(db)))
+
+        with respx.mock(assert_all_called=False) as mock:
+            mock.get(url__regex=r".*firms\.modaps.*/api/area/csv/.*").mock(
+                return_value=httpx.Response(200, text=TELANGANA_CSV)
+            )
+            result = await jobs.ingest_job()
+
+        assert result["detections_inserted"] == 2

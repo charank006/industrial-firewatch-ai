@@ -129,6 +129,10 @@ export const SituationRail: React.FC = () => {
           <div className="space-y-2">
             {filteredHotspots.map((hotspot) => {
               const isSelected = selectedIncident?.id === hotspot.id;
+              const isCritical = hotspot.severity === 'CRITICAL';
+              const isHigh = hotspot.severity === 'HIGH';
+              const isMedium = hotspot.severity === 'MEDIUM';
+
               return (
                 <div
                   key={hotspot.id}
@@ -143,9 +147,13 @@ export const SituationRail: React.FC = () => {
                     <span className="text-white">{hotspot.id}</span>
                     <span
                       className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${
-                        hotspot.severity === 'HIGH'
+                        isCritical
                           ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                          : isHigh
+                          ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                          : isMedium
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                       }`}
                     >
                       {hotspot.severity}
@@ -155,7 +163,7 @@ export const SituationRail: React.FC = () => {
                     {hotspot.classification}
                   </div>
                   <div className="flex justify-between items-center text-[10px] text-slate-400 mt-0.5">
-                    <span>FRP: <strong className="text-white">{hotspot.frpMw} MW</strong></span>
+                    <span>FRP: <strong className="text-white">{hotspot.frpMw.toFixed(1)} MW</strong></span>
                     <span>{hotspot.timeFormatted}</span>
                   </div>
                 </div>
@@ -165,128 +173,10 @@ export const SituationRail: React.FC = () => {
         </div>
       </div>
 
-      {/* Event Mix Distribution */}
-      <div className="space-y-2 border-t border-[#253340] pt-2.5">
-        <div className="flex items-center justify-between text-[10.5px]">
-          <span className="text-slate-200 font-semibold uppercase">EVENT MIX</span>
-          <span className="text-[#6F7E8D] text-[9.5px]">Ratio</span>
-        </div>
-
-        <div className="space-y-1 text-xs">
-          {EVENT_TYPES.map((type) => {
-            const count = metrics.eventMix[type] || 0;
-            const pct = metrics.totalDetected > 0 ? Math.round((count / metrics.totalDetected) * 100) : 0;
-            const isFilterActive = filters.eventType === type;
-
-            return (
-              <div
-                key={type}
-                onClick={() =>
-                  setFilters((prev) => ({
-                    ...prev,
-                    eventType: isFilterActive ? 'ALL' : type,
-                  }))
-                }
-                className={`p-1.5 rounded-md cursor-pointer transition border ${
-                  isFilterActive
-                    ? 'bg-[#0D151E] border-[#3DB7D9] text-white shadow-inner'
-                    : 'bg-[#0D151E]/40 hover:bg-[#0D151E] border-transparent text-slate-300'
-                }`}
-              >
-                <div className="flex justify-between text-[10px] mb-1">
-                  <span className={isFilterActive ? 'text-white font-bold' : 'text-slate-300'}>{type}</span>
-                  <span className="text-[#3DB7D9] font-bold">
-                    {count} ({pct}%)
-                  </span>
-                </div>
-                <div className="w-full h-1 bg-[#05080D] rounded-full overflow-hidden">
-                  <div
-                    className={`h-full transition-all duration-300 ${
-                      type === 'Persistent Thermal Source'
-                        ? 'bg-[#A855F7]'
-                        : type === 'Industrial Fire'
-                        ? 'bg-[#FF3B30]'
-                        : type === 'Routine Flare'
-                        ? 'bg-[#FF6B22]'
-                        : type === 'Forest Fire'
-                        ? 'bg-[#FF9500]'
-                        : type === 'Agricultural Burning'
-                        ? 'bg-[#FFCC00]'
-                        : type === 'Urban/Other'
-                        ? 'bg-[#06B6D4]'
-                        : 'bg-slate-500'
-                    }`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Detections Ticker List */}
-      <div className="border-t border-[#253340] pt-2.5 flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div className="flex items-center justify-between text-[10.5px] pb-1.5 shrink-0">
-          <span className="text-slate-200 font-semibold uppercase">
-            DETECTIONS ({filteredHotspots.length})
-          </span>
-          <span className="text-[9.5px] text-[#39B978] flex items-center space-x-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#39B978] animate-pulse" />
-            <span>NRT</span>
-          </span>
-        </div>
-
-        <div className="space-y-1.5 overflow-y-auto flex-1 pr-1 custom-scrollbar">
-          {filteredHotspots.length === 0 ? (
-            <div className="text-center py-6 text-[#6F7E8D] text-[11px]">
-              No thermal events match current filter.
-            </div>
-          ) : (
-            filteredHotspots.map((hotspot) => {
-              const isSelected = selectedIncident?.id === hotspot.id;
-              const isCritical = hotspot.severity === 'CRITICAL';
-              const isHigh = hotspot.severity === 'HIGH';
-              const isMedium = hotspot.severity === 'MEDIUM';
-
-              return (
-                <div
-                  key={hotspot.id}
-                  onClick={() => selectIncidentById(hotspot.id)}
-                  className={`p-2 rounded-md border cursor-pointer transition ${
-                    isSelected
-                      ? 'bg-[#0D151E] border-[#3DB7D9] shadow-sm'
-                      : 'bg-[#0D151E]/50 border-[#253340] hover:border-[#304150]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="font-bold text-[#3DB7D9]">{hotspot.id}</span>
-                    <span className="text-[#A7B4C1]">{hotspot.timeFormatted}</span>
-                  </div>
-                  <div className="text-[11px] font-medium text-white truncate mt-0.5 font-sans">
-                    {hotspot.classification}
-                  </div>
-                  <div className="flex justify-between items-center text-[10px] text-slate-400 mt-1">
-                    <span>FRP: {hotspot.frpMw.toFixed(1)} MW</span>
-                    <span
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                        isCritical
-                          ? 'bg-[#FF3B30]/20 text-[#FF3B30] border border-[#FF3B30]/40'
-                          : isHigh
-                          ? 'bg-[#F04438]/20 text-[#F04438] border border-[#F04438]/30'
-                          : isMedium
-                          ? 'bg-[#E8A93A]/20 text-[#E8A93A] border border-[#E8A93A]/30'
-                          : 'bg-[#39B978]/20 text-[#39B978] border border-[#39B978]/30'
-                      }`}
-                    >
-                      {hotspot.severity}
-                    </span>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+      {/* Summary Footer */}
+      <div className="p-3 bg-black/50 border-t border-white/10 font-mono text-[10px] text-slate-400 flex justify-between items-center shrink-0">
+        <span>SECTOR: <strong className="text-white">{filters.region.toUpperCase()}</strong></span>
+        <span>SENSOR: <strong className="text-cyan-400">NOAA-20 VIIRS</strong></span>
       </div>
     </div>
   );

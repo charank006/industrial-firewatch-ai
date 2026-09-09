@@ -15,12 +15,14 @@ export const CommandCenterPage: React.FC = () => {
         <GISMapLibre height="h-full" />
       </div>
 
-      {/* 2. FLOATING MAP CONTROLS & LEGEND OVERLAYS */}
-      <div className="absolute top-4 left-90 z-20 flex items-center gap-3">
-        <MapControls />
-      </div>
+      {/* 2. FLOATING MAP CONTROLS & LEGEND OVERLAYS
+          MapControls positions itself absolutely, so wrapping it in another
+          absolute box collapsed that box to zero width and left the popout
+          panel painting off-screen. It is placed directly instead, clear of
+          the 320px situation rail. */}
+      <MapControls className="absolute top-4 left-[22rem]" />
 
-      <div className="absolute top-4 right-104 z-20 hidden xl:block">
+      <div className="absolute top-4 right-[26rem] z-20 hidden xl:block">
         <MapLegend />
       </div>
 

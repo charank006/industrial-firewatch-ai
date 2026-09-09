@@ -44,6 +44,11 @@ GAS_TAGS = {
     "amenity": {"fuel"},
 }
 POWER_TAGS = {"power": {"plant", "substation", "generator"}}
+MINE_TAGS = {
+    "landuse": {"quarry"},
+    "industrial": {"mine", "mining", "quarry"},
+    "man_made": {"mineshaft", "adit"},
+}
 ROAD_TAGS = {
     "highway": {
         "motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential",
@@ -126,6 +131,12 @@ class SurroundingsFeatures:
     gas_facilities_within_1km: int = 0
     power_infra_within_1km: int = 0
     building_count: int = 0
+    # Mining and quarrying, counted separately from generic industrial land.
+    # A coal seam fire in an open-cast mine is not a factory fire, and the
+    # tags to tell them apart are already in the Overpass response.
+    mines_within_1km: int = 0
+    nearest_mine_m: Optional[float] = None
+
     hospitals: int = 0
     schools: int = 0
     fire_stations: int = 0
@@ -231,7 +242,7 @@ def extract_features(
         name: _Bucket()
         for name in (
             "forest", "scrub_grass", "farmland", "industrial",
-            "residential", "water", "factory", "gas", "power",
+            "residential", "water", "factory", "gas", "power", "mine",
         )
     }
     roads: List[LineString] = []
@@ -311,6 +322,8 @@ def extract_features(
             assign("gas")
         if matches(tags, POWER_TAGS):
             assign("power")
+        if matches(tags, MINE_TAGS):
+            assign("mine")
 
         if "building" in tags:
             features.building_count += 1
@@ -418,6 +431,8 @@ def extract_features(
             item["distance_m"] or 0.0,
         )
     )
+    features.mines_within_1km = len(buckets["mine"].geometries)
+    features.nearest_mine_m = nearest("mine")
     features.location_name = derive_location_name(places)
     features.geometry_quality = "approximate" if used_bounds_fallback else "exact"
 

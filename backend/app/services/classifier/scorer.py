@@ -41,6 +41,7 @@ CLASS_LABEL = {
     "agriculture": "Agricultural Burning",
     "gas_oil": "Gas/Oil",
     "urban": "Urban",
+    "mining": "Mining / Extraction",
     "unknown": "Unknown Anomaly",
 }
 
@@ -115,10 +116,67 @@ EVIDENCE: List[EvidenceTerm] = [
         lambda f: clamp(_get(f, "gas_facilities_within_1km") / 2.0),
     ),
     EvidenceTerm(
+        "no_gas_infrastructure",
+        "No Hydrocarbon Infrastructure",
+        "No gas or petroleum installation mapped within 1 km",
+        # The complement of gas_tags. A flare stack burns hydrocarbon, so
+        # without any gas installation nearby there is nothing to flare -
+        # however recurrent and stable the heat looks. Coal seam fires inside
+        # a mine matched every other flare signal (inside an industrial
+        # parcel, FRP tracking the site median, recurring) and were reported
+        # as "Routine Flare", which reads to an operator as normal and
+        # expected. They are not.
+        lambda f: 1.0 if _get(f, "gas_facilities_within_1km") < 1 else 0.0,
+    ),
+    EvidenceTerm(
+        "builtup_cover",
+        "Built-up Ground Cover",
+        "{builtup_fraction:.0%} of the surrounding area is built-up",
+        # From the WorldCover raster, which measures every pixel. The urban
+        # class previously had only OSM residential polygons, which are
+        # absent across most of the AOI.
+        lambda f: clamp(_get(f, "builtup_fraction") / 0.4),
+    ),
+    EvidenceTerm(
+        "scrub_over_trees",
+        "Scrub Exceeds Woodland",
+        "{scrub_grass_fraction:.0%} scrub, grass or bare ground against "
+        "{forest_fraction:.0%} tree cover",
+        # Comparative, not absolute. Half the AOI has more scrub than tree
+        # cover, and WorldCover's "tree cover" class starts at 10% canopy, so
+        # scattered trees over scrubland were reading as forest: a disc that
+        # was 77% bare ground and 16% tree cover classified as Forest Fire.
+        #
+        # An absolute scrub penalty over-corrected, demoting genuinely wooded
+        # events. Measuring the EXCESS of scrub over trees leaves those alone
+        # (the term is zero whenever trees lead) and only speaks where scrub
+        # actually dominates.
+        lambda f: clamp(
+            (_get(f, "scrub_grass_fraction") - _get(f, "forest_fraction")) / 0.5
+        ),
+    ),
+    EvidenceTerm(
+        "mine_tags",
+        "Mining / Quarrying Infrastructure",
+        "{mines_within_1km:.0f} mine or quarry site(s) mapped within 1 km",
+        # Specific tags, like gas_tags for Gas/Oil. Without this a coal seam
+        # fire inside an open-cast mine reads as a generic factory fire: the
+        # quarry is industrial land, so every industrial term fires and
+        # nothing distinguishes it.
+        lambda f: clamp(_get(f, "mines_within_1km") / 1.5),
+    ),
+    EvidenceTerm(
         "forest_area",
         "Forest Land Cover",
         "{forest_area_km2:.2f} km2 forest/woodland within radius",
-        lambda f: clamp(_get(f, "forest_fraction") / 0.3),
+        # 0.4, chosen by sweeping 0.3/0.4/0.5 over every stored feature vector
+        # and scoring each against WorldCover's own dominant class. 0.3 recalls
+        # every wooded event but misses 8 cropland ones; 0.5 is the mirror
+        # image. 0.4 is the balanced point: 28/30 and 55/58.
+        #
+        # The old 0.3 was far too generous for this AOI - the median location
+        # has 18.5% tree cover and was collecting 62% of the full forest weight.
+        lambda f: clamp(_get(f, "forest_fraction") / 0.4),
     ),
     EvidenceTerm(
         "farmland_area",
@@ -421,6 +479,8 @@ _CLASS_ACTION = {
     "forest": "Vegetation fire indicated. Assess spread risk against prevailing wind.",
     "agriculture": "Pattern consistent with agricultural residue burning. Log for air-quality reporting.",
     "urban": "Built-up area involved. Assess structure and population exposure.",
+    "mining": "Mine or quarry site. Check for coal seam or spoil-heap combustion, which "
+               "burns for months and is not extinguished like a surface fire.",
     "unknown": "Source could not be attributed with confidence. Manual review recommended.",
 }
 

@@ -3,13 +3,25 @@ import { useNavigate } from 'react-router-dom';
 import { Globe2, Layers, SlidersHorizontal } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 
-export const MapControls: React.FC = () => {
+interface MapControlsProps {
+  /**
+   * Where to sit. Defaults to the top-right of the nearest positioned
+   * ancestor, which is what MapExplorer wants. The operations room places it
+   * itself, because top-right there is underneath the intelligence drawer.
+   */
+  className?: string;
+}
+
+export const MapControls: React.FC<MapControlsProps> = ({
+  className = 'absolute top-3 right-3',
+}) => {
   const navigate = useNavigate();
   const { layers, toggleLayer, mapMode, setMapMode } = useIntelligence();
   const [isOpen, setIsOpen] = useState<boolean>(false);
 
   return (
-    <div className="absolute top-3 right-3 z-30 flex flex-col items-end space-y-2 font-mono text-xs">
+    <div className={`${className} z-30 flex flex-col items-end space-y-2 font-mono text-xs`}>
+      {/* Control Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="p-2 bg-[#05080E]/90 hover:bg-[#090D17] border border-white/10 rounded-lg text-slate-300 hover:text-white shadow-xl transition flex items-center space-x-1.5 cursor-pointer backdrop-blur-md"

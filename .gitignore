@@ -35,3 +35,6 @@ data/processed/
 # Python cache
 .pytest_cache/
 .mypy_cache/
+
+# A nested clone that appeared in the working tree; not part of this project.
+industrial-firewatch-ai/

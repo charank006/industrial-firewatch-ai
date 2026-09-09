@@ -40,7 +40,21 @@ _consecutive_failures = 0
 _MIRROR_ROTATE_AFTER = 2
 _CIRCUIT_OPEN_AFTER = 6
 _circuit_opened_at: Optional[float] = None
-_CIRCUIT_RESET_SECONDS = 300.0
+
+# The reset window grows while Overpass stays down.
+#
+# A fixed 5-minute window meant a long outage was re-probed every 5 minutes,
+# and each probe costs a full failure cycle - 6 events x 4 attempts across
+# three mirrors, roughly 2 minutes each. During a real outage (all three
+# mirrors refusing connections) that burned about 12 minutes in every 5, so a
+# backlog of 86 events would have taken three hours to fail.
+#
+# Backing off 5 -> 15 -> 45 -> 60 min caps the cost of an outage at one probe
+# an hour, while a service that is merely busy still recovers on the first
+# short window.
+_circuit_trips = 0
+_CIRCUIT_RESET_BASE_SECONDS = 300.0
+_CIRCUIT_RESET_MAX_SECONDS = 3600.0
 
 
 class OverpassError(RuntimeError):
@@ -72,12 +86,30 @@ out tags geom;
 """.strip()
 
 
+def circuit_reset_seconds() -> float:
+    """How long the circuit stays open for the current run of failures.
+
+    Trebles per consecutive trip, capped: 5 min, 15 min, 45 min, then 60.
+    """
+    if _circuit_trips <= 1:
+        return _CIRCUIT_RESET_BASE_SECONDS
+    return min(
+        _CIRCUIT_RESET_BASE_SECONDS * (3 ** (_circuit_trips - 1)),
+        _CIRCUIT_RESET_MAX_SECONDS,
+    )
+
+
 def _circuit_is_open() -> bool:
     global _circuit_opened_at, _consecutive_failures
     if _circuit_opened_at is None:
         return False
-    if time.monotonic() - _circuit_opened_at > _CIRCUIT_RESET_SECONDS:
-        logger.info("Overpass circuit breaker reset; retrying")
+    if time.monotonic() - _circuit_opened_at > circuit_reset_seconds():
+        # Half-open: one probe is allowed through. A success clears the trip
+        # count, a failure trips it again with a longer window.
+        logger.info(
+            "Overpass circuit breaker reset after %ds; probing",
+            int(circuit_reset_seconds()),
+        )
         _circuit_opened_at = None
         _consecutive_failures = 0
         return False
@@ -85,29 +117,35 @@ def _circuit_is_open() -> bool:
 
 
 def _record_success() -> None:
-    global _consecutive_failures, _circuit_opened_at
+    global _consecutive_failures, _circuit_opened_at, _circuit_trips
     _consecutive_failures = 0
     _circuit_opened_at = None
+    # Overpass is answering again, so the next outage starts from the short
+    # window rather than inheriting an old backoff.
+    _circuit_trips = 0
 
 
 def _record_failure() -> None:
-    global _consecutive_failures, _circuit_opened_at
+    global _consecutive_failures, _circuit_opened_at, _circuit_trips
     _consecutive_failures += 1
     if _consecutive_failures >= _CIRCUIT_OPEN_AFTER and _circuit_opened_at is None:
         _circuit_opened_at = time.monotonic()
+        _circuit_trips += 1
         logger.warning(
-            "Overpass circuit breaker opened after %d consecutive failures; "
-            "surroundings will report 'unavailable' for %ds",
+            "Overpass circuit breaker opened after %d consecutive failures "
+            "(trip %d); surroundings will report 'unavailable' for %ds",
             _consecutive_failures,
-            int(_CIRCUIT_RESET_SECONDS),
+            _circuit_trips,
+            int(circuit_reset_seconds()),
         )
 
 
 def reset_circuit() -> None:
     """Test hook."""
-    global _consecutive_failures, _circuit_opened_at, _last_request_at
+    global _consecutive_failures, _circuit_opened_at, _last_request_at, _circuit_trips
     _consecutive_failures = 0
     _circuit_opened_at = None
+    _circuit_trips = 0
     _last_request_at = 0.0
 
 
@@ -187,9 +225,19 @@ async def probe_overpass() -> Dict[str, Any]:
     """Report Overpass availability and free slots. Never raises."""
     started = time.perf_counter()
     if _circuit_is_open():
+        # Report how long the breaker will stay open and which backoff step it
+        # is on. Without that an operator sees a red light with no way to tell
+        # a brief hiccup from a multi-hour outage.
+        remaining = max(
+            0.0, circuit_reset_seconds() - (time.monotonic() - (_circuit_opened_at or 0.0))
+        )
         return {
             "ok": False,
-            "detail": "Circuit breaker open after repeated failures",
+            "detail": (
+                f"Circuit breaker open (trip {_circuit_trips}); retrying in "
+                f"{int(remaining // 60)}m{int(remaining % 60):02d}s. "
+                "Surroundings report 'unavailable'; land cover is unaffected."
+            ),
             "latency_ms": None,
         }
     try:

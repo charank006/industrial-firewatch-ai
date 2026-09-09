@@ -35,6 +35,7 @@ const CLASS_COLOUR: Record<FireClassId, string> = {
   agriculture: '#FFB020',
   gas_oil: '#A855F7',
   urban: '#EC4899',
+  mining: '#8B6F47',
   unknown: '#66768A',
 };
 
@@ -45,6 +46,7 @@ const CLASS_LABEL: Record<FireClassId, string> = {
   agriculture: 'Agricultural Burning',
   gas_oil: 'Gas/Oil',
   urban: 'Urban',
+  mining: 'Mining / Extraction',
   unknown: 'Unknown Anomaly',
 };
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
@@ -12,13 +12,74 @@ import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
 import { ProbabilityDistributionCard } from '../../components/intelligence/ProbabilityDistributionCard';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { fetchFireDetections } from '../../services/api';
 
 export const IncidentDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { hotspots, selectFacilityById } = useIntelligence();
+  const { hotspots, selectFacilityById, isLoading } = useIntelligence();
 
+  // `hotspots[0]` is undefined on the first render in api mode, and every
+  // `incident.<field>` below then threw - blanking the whole app tree, not
+  // just this page.
   const incident = hotspots.find((h) => h.id === id) || hotspots[0];
+
+  /**
+   * The FRP series this chart plots.
+   *
+   * These are the event's own satellite passes, and the baseline is its own mean
+   * FRP rather than a round number chosen to make the spike look dramatic.
+   */
+  const [rows, setRows] = useState<
+    Array<{ time: string; frp: number; at: string }> | null
+  >(null);
+  const [window, setWindow] = useState<'24h' | '7d' | 'all'>('7d');
+
+  useEffect(() => {
+    if (!incident?.id) return;
+    let cancelled = false;
+
+    fetchFireDetections(incident.id)
+      .then((data) => {
+        if (cancelled || !data?.detections?.length) return;
+        setRows(
+          data.detections.map((d) => ({
+            time: d.time_formatted || d.acquisition_time.slice(11, 16),
+            frp: Number(d.frp_mw.toFixed(1)),
+            at: d.acquisition_time,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setRows(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [incident?.id]);
+
+  /**
+   * The plotted window. The baseline is the mean of whatever is in view.
+   */
+  const series = React.useMemo(() => {
+    if (!rows?.length) return null;
+    const spans: Record<string, number> = { '24h': 24, '7d': 24 * 7, all: Infinity };
+    const cutoff = Date.now() - spans[window] * 3_600_000;
+    const inWindow =
+      window === 'all' ? rows : rows.filter((r) => new Date(r.at).getTime() >= cutoff);
+    if (!inWindow.length) return [];
+    const mean = inWindow.reduce((t, r) => t + r.frp, 0) / inWindow.length;
+    return inWindow.map((r) => ({ ...r, baseline: Number(mean.toFixed(1)) }));
+  }, [rows, window]);
+
+  if (!incident) {
+    return (
+      <div className="min-h-screen bg-[#050A12] p-6 font-mono text-xs text-[#A7B4C5]">
+        {isLoading ? 'Loading detections…' : `No detection ${id ?? ''} in the current view.`}
+      </div>
+    );
+  }
 
   const handleFacilityClick = () => {
     selectFacilityById(incident.nearestFacilityId);
@@ -37,17 +98,19 @@ export const IncidentDetailsPage: React.FC = () => {
   const timelineData = (incident.frpTimeline && incident.frpTimeline.length > 0)
     ? incident.frpTimeline
     : [
-        { time: 'Day -5', frp: Number((baselineValue * 0.95).toFixed(2)), baseline: baselineValue },
-        { time: 'Day -4', frp: Number((baselineValue * 1.05).toFixed(2)), baseline: baselineValue },
-        { time: 'Day -3', frp: Number((baselineValue * 0.98).toFixed(2)), baseline: baselineValue },
-        { time: 'Day -2', frp: Number((baselineValue * 1.02).toFixed(2)), baseline: baselineValue },
-        { time: 'Day -1', frp: Number((baselineValue * 1.08).toFixed(2)), baseline: baselineValue },
+        { time: 'Pass -5', frp: Number((baselineValue * 0.95).toFixed(2)), baseline: baselineValue },
+        { time: 'Pass -4', frp: Number((baselineValue * 1.05).toFixed(2)), baseline: baselineValue },
+        { time: 'Pass -3', frp: Number((baselineValue * 0.98).toFixed(2)), baseline: baselineValue },
+        { time: 'Pass -2', frp: Number((baselineValue * 1.02).toFixed(2)), baseline: baselineValue },
+        { time: 'Pass -1', frp: Number((baselineValue * 1.08).toFixed(2)), baseline: baselineValue },
         { time: incident.timeFormatted || 'Observation', frp: Number(incident.frpMw.toFixed(1)), baseline: baselineValue },
       ];
 
   const elevationRatio = baselineValue > 0
     ? Math.round(((incident.frpMw - baselineValue) / baselineValue) * 100)
     : 0;
+
+  const chartData = series && series.length > 0 ? series : timelineData;
 
   return (
     <div className="min-h-screen bg-[#050A12] p-4 sm:p-6 space-y-6 font-sans text-[#F5F7FA]">
@@ -97,6 +160,23 @@ export const IncidentDetailsPage: React.FC = () => {
                 <span>HISTORICAL FRP VS BASELINE SPIKE</span>
               </span>
               <div className="flex items-center space-x-3 text-[11px]">
+                {rows && rows.length > 0 && (
+                  <div className="flex rounded border border-[#203246] overflow-hidden mr-2">
+                    {(['24h', '7d', 'all'] as const).map((w) => (
+                      <button
+                        key={w}
+                        onClick={() => setWindow(w)}
+                        className={`px-2 py-0.5 text-[10px] font-mono transition ${
+                          window === w
+                            ? 'bg-[#16A9D9]/20 text-[#16A9D9] font-bold'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {w === 'all' ? 'All' : w}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <span className="text-[#A7B4C5]">
                   BASELINE: <strong className="text-[#16A9D9] font-mono">{baselineValue.toFixed(1)} MW</strong>
                 </span>
@@ -113,7 +193,7 @@ export const IncidentDetailsPage: React.FC = () => {
 
             <div className="h-52 w-full pt-2">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={timelineData}>
+                <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#203246" />
                   <XAxis dataKey="time" stroke="#66768A" fontSize={10} />
                   <YAxis stroke="#66768A" fontSize={10} domain={[0, 'auto']} />
@@ -210,6 +290,7 @@ export const IncidentDetailsPage: React.FC = () => {
               steps={incident.reasoningSteps}
               classification={incident.classification}
               confidence={incident.sensorConfidenceRate ?? incident.confidence}
+              severity={incident.severity}
             />
           </div>
 
@@ -227,4 +308,3 @@ export const IncidentDetailsPage: React.FC = () => {
     </div>
   );
 };
-

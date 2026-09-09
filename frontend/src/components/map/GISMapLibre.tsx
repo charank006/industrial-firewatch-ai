@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { classColorMatchExpression } from '../../utils/classColors';
 import { useIntelligence } from '../../context/IntelligenceContext';
 import {
   facilitiesToGeoJSON,
@@ -8,7 +9,16 @@ import {
   industrialZonesToGeoJSON,
   riskZonesToGeoJSON,
 } from '../../utils/geojson';
-import { MAP_SYMBOLOGY_CONFIG } from '../../config/mapSymbology';
+
+const DARK_BASEMAP_URL: string =
+  import.meta.env.VITE_MAP_STYLE_URL ||
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+
+const DARK_LABELS_URL: string =
+  import.meta.env.VITE_MAP_LABELS_URL ||
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
+
+const DARK_BASEMAP_ATTRIBUTION = '&copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors';
 
 export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -23,11 +33,13 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     setSelectedIncident,
     setSelectedFacility,
     setIsDrawerOpen,
+    isDrawerOpen,
     layers,
     mapMode,
   } = useIntelligence();
 
-  // Initialize MapLibre Map with Satellite Imagery + Clean Vector Dark Basemap
+  const [styleReady, setStyleReady] = useState(false);
+
   const filteredHotspotsRef = useRef(filteredHotspots);
   filteredHotspotsRef.current = filteredHotspots;
 
@@ -40,7 +52,6 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
   const layersRef = useRef(layers);
   layersRef.current = layers;
 
-  // Helper to safely update GeoJSON sources
   const syncSources = useCallback(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
@@ -61,7 +72,6 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     }
   }, []);
 
-  // Show rich popup for selected incident
   const showIncidentPopup = useCallback((incident: typeof selectedIncident) => {
     const map = mapRef.current;
     if (!map || !incident) return;
@@ -71,15 +81,21 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       popupRef.current = null;
     }
 
-    const riskScore = incident.riskScore ?? Math.round(incident.confidence * 100);
+    const sanitizePct = (val: number | undefined, fallback = 85) => {
+      if (val === undefined || val === null || isNaN(val)) return fallback;
+      if (val <= 1.0) return Math.round(val * 100);
+      return Math.min(100, Math.round(val));
+    };
+
+    const riskScore = incident.riskScore != null ? Math.min(100, Math.round(incident.riskScore)) : sanitizePct(incident.confidence, 55);
     const riskColor = riskScore >= 75 ? '#ef4444' : riskScore >= 45 ? '#f59e0b' : '#10b981';
     const facilityDistanceText = incident.facilityDistanceKm != null 
       ? `${incident.facilityDistanceKm < 1 ? Math.round(incident.facilityDistanceKm * 1000) + ' m' : incident.facilityDistanceKm.toFixed(2) + ' km'}`
       : 'Unknown';
     const facilityName = incident.nearestFacilityName || 'Regional Buffer';
     const facilityType = incident.nearestFacilityType ? ` (${incident.nearestFacilityType.toUpperCase()})` : '';
-    const sensorConf = incident.sensorConfidenceRate ?? Math.round(incident.confidence * 100);
-    const mlConf = incident.mlConfidenceRate ?? Math.round(incident.confidence * 100);
+    const sensorConf = sanitizePct(incident.sensorConfidenceRate ?? incident.confidence, 88);
+    const mlConf = sanitizePct(incident.mlConfidenceRate ?? (incident.predictedProbability ? incident.predictedProbability * 100 : incident.confidence), 85);
 
     const html = `
       <div style="min-width: 250px; font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.4; color: #f1f4f6;">
@@ -133,46 +149,45 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       .addTo(map);
   }, []);
 
-  // Initialize MapLibre Map
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
     const initialCenter: [number, number] = selectedIncidentRef.current
       ? [selectedIncidentRef.current.lng, selectedIncidentRef.current.lat]
-      : [78.9629, 20.5937]; // All-India Geographic Center
+      : [78.9629, 20.5937];
 
-    const initialZoom = selectedIncidentRef.current ? 11 : 5;
+    const initialZoom = selectedIncidentRef.current ? 9.5 : 5;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: {
         version: 8,
         sources: {
-          'clean-dark-basemap': {
+          'basemap-dark-source': {
             type: 'raster',
-            tiles: [
-              'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-            ],
+            tiles: [DARK_BASEMAP_URL],
             tileSize: 256,
-            attribution: '&copy; Esri &copy; OpenStreetMap',
+            attribution: DARK_BASEMAP_ATTRIBUTION,
+          },
+          'basemap-labels-source': {
+            type: 'raster',
+            tiles: [DARK_LABELS_URL],
+            tileSize: 256,
           },
           'esri-satellite': {
             type: 'raster',
             tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
             tileSize: 256,
-            attribution: '&copy; Esri World Imagery',
+            attribution: '&copy; Esri',
           },
         },
         layers: [
           {
             id: 'basemap-dark',
             type: 'raster',
-            source: 'clean-dark-basemap',
+            source: 'basemap-dark-source',
             minzoom: 0,
             maxzoom: 19,
-            layout: {
-              visibility: mapMode === 'dark' ? 'visible' : 'none',
-            },
           },
           {
             id: 'basemap-satellite',
@@ -181,20 +196,35 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             minzoom: 0,
             maxzoom: 19,
             layout: {
-              visibility: mapMode === 'satellite' ? 'visible' : 'visible', // Default Satellite Visibility
+              visibility: mapMode === 'satellite' ? 'visible' : 'none',
+            },
+          },
+          {
+            id: 'basemap-labels',
+            type: 'raster',
+            source: 'basemap-labels-source',
+            minzoom: 0,
+            maxzoom: 19,
+            layout: {
+              visibility: mapMode === 'satellite' ? 'none' : 'visible',
             },
           },
         ],
       },
       center: initialCenter,
-      zoom: selectedIncident ? 12.5 : initialZoom,
+      zoom: selectedIncidentRef.current ? 9.5 : initialZoom,
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-left');
     mapRef.current = map;
 
+    const resizeObserver = new ResizeObserver(() => map.resize());
+    resizeObserver.observe(mapContainerRef.current);
+
+    const initialResize = requestAnimationFrame(() => map.resize());
+    map.once('load', () => map.resize());
+
     map.on('load', () => {
-      // Add GeoJSON Sources using latest ref data
       map.addSource('hotspots-source', {
         type: 'geojson',
         data: hotspotsToGeoJSON(filteredHotspotsRef.current) as any,
@@ -215,14 +245,13 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         data: industrialZonesToGeoJSON() as any,
       });
 
-      // Add Industrial Zone Boundary Layer
       map.addLayer({
         id: 'industrial-zones-line',
         type: 'line',
         source: 'industrial-zones-source',
         paint: {
-          'line-color': '#38bdf8',
-          'line-width': 1.8,
+          'line-color': '#287FB1',
+          'line-width': 1.5,
           'line-dasharray': [4, 4],
         },
         layout: {
@@ -230,7 +259,6 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         },
       });
 
-      // Add Risk Buffer Polygon Fill & Line Layers
       map.addLayer({
         id: 'risk-zones-fill',
         type: 'fill',
@@ -244,7 +272,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             'monitoring', '#16A9D9',
             '#16A9D9',
           ],
-          'fill-opacity': 0.18,
+          'fill-opacity': 0.12,
         },
         layout: {
           visibility: layersRef.current.riskZones ? 'visible' : 'none',
@@ -264,7 +292,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             'monitoring', '#16A9D9',
             '#16A9D9',
           ],
-          'line-width': 2,
+          'line-width': 1.5,
           'line-dasharray': [3, 3],
         },
         layout: {
@@ -272,44 +300,27 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         },
       });
 
-      // Add Facilities Layer
       map.addLayer({
         id: 'facilities-layer',
         type: 'circle',
         source: 'facilities-source',
         paint: {
-          'circle-color': '#38bdf8',
-          'circle-radius': 8,
-          'circle-stroke-width': 2.5,
-          'circle-stroke-color': '#ffffff',
+          'circle-color': '#16A9D9',
+          'circle-radius': 7,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#050A12',
         },
         layout: {
           visibility: layersRef.current.industrialFacilities ? 'visible' : 'none',
         },
       });
 
-      // Add Thermal Hotspots Layer with Dynamic Multi-Class Styling
       map.addLayer({
         id: 'hotspots-layer',
         type: 'circle',
         source: 'hotspots-source',
         paint: {
-          'circle-color': [
-            'match',
-            ['get', 'classification'],
-            'Persistent Thermal Source', MAP_SYMBOLOGY_CONFIG['Persistent Thermal Source'].color,
-            'Industrial Fire', MAP_SYMBOLOGY_CONFIG['Industrial Fire'].color,
-            'industrial_fire', MAP_SYMBOLOGY_CONFIG['industrial_fire'].color,
-            'Routine Flare', MAP_SYMBOLOGY_CONFIG['Routine Flare'].color,
-            'gas_oil_flare', MAP_SYMBOLOGY_CONFIG['gas_oil_flare'].color,
-            'Forest Fire', MAP_SYMBOLOGY_CONFIG['Forest Fire'].color,
-            'forest_fire', MAP_SYMBOLOGY_CONFIG['forest_fire'].color,
-            'Agricultural Burning', MAP_SYMBOLOGY_CONFIG['Agricultural Burning'].color,
-            'agricultural_burning', MAP_SYMBOLOGY_CONFIG['agricultural_burning'].color,
-            'Urban / Other', MAP_SYMBOLOGY_CONFIG['Urban / Other'].color,
-            'urban_other', MAP_SYMBOLOGY_CONFIG['urban_other'].color,
-            MAP_SYMBOLOGY_CONFIG['unknown'].color,
-          ],
+          'circle-color': classColorMatchExpression() as never,
           'circle-radius': [
             'interpolate',
             ['linear'],
@@ -319,18 +330,8 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
             150, 14,
             300, 18,
           ],
-          'circle-stroke-width': [
-            'match',
-            ['get', 'classification'],
-            'Persistent Thermal Source', 3.0,
-            2.0,
-          ],
-          'circle-stroke-color': [
-            'match',
-            ['get', 'classification'],
-            'Persistent Thermal Source', '#FFFFFF',
-            '#050A12',
-          ],
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#FFFFFF',
           'circle-opacity': 0.95,
         },
         layout: {
@@ -338,68 +339,36 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         },
       });
 
-      // Interactive Map Popup on Hotspot Click
       map.on('click', 'hotspots-layer', (e: any) => {
         if (!e.features || e.features.length === 0) return;
         const properties = e.features[0].properties;
-        const coords = e.features[0].geometry.coordinates.slice();
-
         if (properties && properties.id) {
           const found = filteredHotspotsRef.current.find((h) => h.id === properties.id);
           if (found) {
             setSelectedIncident(found);
             setIsDrawerOpen(true);
-
-            new maplibregl.Popup({ className: 'custom-map-popup' })
-              .setLngLat(coords)
-              .setHTML(`
-                <div style="background: #080C14; color: #fff; border: 1px solid rgba(56,189,248,0.4); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px;">
-                  <div style="color: #38bdf8; font-weight: bold; margin-bottom: 4px;">● ${found.id} &bull; ${found.classification.toUpperCase()}</div>
-                  <div><strong>LOCATION:</strong> ${found.locationName}</div>
-                  <div><strong>RADIATIVE POWER:</strong> <span style="color: #f59e0b;">${found.frpMw} MW</span></div>
-                  <div><strong>BRIGHTNESS TEMP:</strong> ${found.brightnessK} K</div>
-                  <div><strong>FACILITY DISTANCE:</strong> ${Math.round(found.facilityDistanceKm * 1000)}m</div>
-                </div>
-              `)
-              .addTo(map);
           }
         }
       });
 
-      // Facility Click Handler - Uses latest ref data
       map.on('click', 'facilities-layer', (e: any) => {
         if (!e.features || e.features.length === 0) return;
         const properties = e.features[0].properties;
-        const coords = e.features[0].geometry.coordinates.slice();
-
         if (properties && properties.id) {
           const found = facilitiesRef.current.find((f) => f.id === properties.id);
           if (found) {
             setSelectedFacility(found);
-
-            new maplibregl.Popup({ className: 'custom-map-popup' })
-              .setLngLat(coords)
-              .setHTML(`
-                <div style="background: #080C14; color: #fff; border: 1px solid rgba(56,189,248,0.4); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 11px;">
-                  <div style="color: #38bdf8; font-weight: bold; margin-bottom: 4px;">🏭 ${found.name}</div>
-                  <div><strong>TYPE:</strong> ${found.type}</div>
-                  <div><strong>BASELINE:</strong> ${found.baselineFRP} MW</div>
-                  <div><strong>STATUS:</strong> <span style="color: ${found.status === 'ANOMALY_DETECTED' ? '#ef4444' : '#10b981'}; font-weight: bold;">${found.status}</span></div>
-                </div>
-              `)
-              .addTo(map);
           }
         }
       });
 
-      // Cursor Pointers
       map.on('mouseenter', 'hotspots-layer', () => (map.getCanvas().style.cursor = 'pointer'));
       map.on('mouseleave', 'hotspots-layer', () => (map.getCanvas().style.cursor = ''));
       map.on('mouseenter', 'facilities-layer', () => (map.getCanvas().style.cursor = 'pointer'));
       map.on('mouseleave', 'facilities-layer', () => (map.getCanvas().style.cursor = ''));
 
-      // Ensure data is synced after load
       syncSources();
+      setStyleReady(true);
 
       if (selectedIncidentRef.current) {
         showIncidentPopup(selectedIncidentRef.current);
@@ -407,28 +376,29 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     });
 
     return () => {
+      cancelAnimationFrame(initialResize);
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
+      setStyleReady(false);
     };
   }, [setSelectedIncident, setSelectedFacility, setIsDrawerOpen, syncSources, showIncidentPopup]);
 
-  // Synchronize Basemap Mode
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !styleReady) return;
 
     if (map.getLayer('basemap-satellite')) {
       map.setLayoutProperty('basemap-satellite', 'visibility', mapMode === 'satellite' ? 'visible' : 'none');
     }
-    if (map.getLayer('basemap-dark')) {
-      map.setLayoutProperty('basemap-dark', 'visibility', mapMode === 'dark' ? 'visible' : 'none');
+    if (map.getLayer('basemap-labels')) {
+      map.setLayoutProperty('basemap-labels', 'visibility', mapMode === 'satellite' ? 'none' : 'visible');
     }
-  }, [mapMode]);
+  }, [mapMode, styleReady]);
 
-  // Synchronize Data Sources when state updates
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !styleReady) return;
 
     if (map.isStyleLoaded()) {
       syncSources();
@@ -437,12 +407,11 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         syncSources();
       });
     }
-  }, [filteredHotspots, facilities, selectedIncident, syncSources]);
+  }, [filteredHotspots, facilities, selectedIncident, syncSources, styleReady]);
 
-  // Synchronize Layer Visibility
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !styleReady) return;
 
     if (map.getLayer('hotspots-layer')) {
       map.setLayoutProperty('hotspots-layer', 'visibility', layers.thermalVIIRS ? 'visible' : 'none');
@@ -457,9 +426,14 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     if (map.getLayer('industrial-zones-line')) {
       map.setLayoutProperty('industrial-zones-line', 'visibility', layers.landCover ? 'visible' : 'none');
     }
-  }, [layers]);
+  }, [layers, styleReady]);
 
-  // Fly to selected incident or facility and show popup
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.resize();
+  }, [isDrawerOpen, styleReady]);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -468,8 +442,9 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       const executeFly = () => {
         map.flyTo({
           center: [selectedIncident.lng, selectedIncident.lat],
-          zoom: 13,
-          duration: 1000,
+          zoom: 9.8,
+          duration: 1200,
+          essential: true,
         });
         showIncidentPopup(selectedIncident);
       };
@@ -483,8 +458,9 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
       const executeFlyFac = () => {
         map.flyTo({
           center: [selectedFacility.lng, selectedFacility.lat],
-          zoom: 12,
-          duration: 1000,
+          zoom: 9.5,
+          duration: 1200,
+          essential: true,
         });
       };
 
@@ -497,9 +473,8 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
   }, [selectedIncident, selectedFacility, showIncidentPopup]);
 
   return (
-    <div className={`relative w-full ${height} overflow-hidden rounded-lg shadow-2xl`}>
+    <div className={`relative w-full ${height} overflow-hidden rounded-lg border border-[#203246] shadow-2xl`}>
       <div ref={mapContainerRef} className="w-full h-full" />
     </div>
   );
 };
-

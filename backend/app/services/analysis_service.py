@@ -38,11 +38,12 @@ from app.models.models import (
     WeatherAnomalyRecord,
     WeatherObservation,
 )
-from app.services import weather_service
+from app.services import landcover_service, weather_service
 from app.services.classifier.feature_vector import build_feature_vector
 from app.services.classifier.scorer import classify, suggested_action
 from app.services.classifier.validity import assess_validity
 from app.services.impact_service import assess_impact
+from app.services.risk_service import RiskAssessment, assess_risk
 from app.services.osm import client as overpass
 from app.services.osm.features import SurroundingsFeatures, extract_features
 
@@ -100,6 +101,7 @@ class Enrichment:
     from_cache: bool = False
     surroundings_unavailable: bool = False
     weather: Optional[weather_service.WeatherAnalysis] = None
+    land_cover: Optional[Dict[str, Any]] = None
     errors: Dict[str, str] = field(default_factory=dict)
 
 
@@ -110,6 +112,7 @@ async def fetch_enrichment(
     cached_surroundings: Optional[Dict[str, Any]] = None,
     radius_m: Optional[int] = None,
     client: Optional[httpx.AsyncClient] = None,
+    allow_overpass: bool = True,
 ) -> Enrichment:
     """Every outbound HTTP call for one event, and nothing else.
 
@@ -122,6 +125,15 @@ async def fetch_enrichment(
     if cached_surroundings is not None:
         enrichment.surroundings = SurroundingsFeatures(**cached_surroundings)
         enrichment.from_cache = True
+    elif not allow_overpass:
+        # Over a country-sized AOI the backlog is hundreds of events a day and
+        # Overpass takes seconds to minutes each, so it is spent on the
+        # highest-FRP events first and the rest are classified on WorldCover
+        # alone. Land cover still resolves forest/agriculture/urban; only the
+        # industrial and gas evidence is missing, and saying so is better than
+        # letting one slow dependency stall the queue.
+        enrichment.surroundings_unavailable = True
+        enrichment.errors["surroundings"] = "overpass budget spent for this run"
     else:
         try:
             elements = await overpass.fetch_elements(
@@ -148,6 +160,14 @@ async def fetch_enrichment(
     except (httpx.HTTPError, weather_service.WeatherError) as exc:
         logger.warning("Weather failed at %.4f,%.4f: %s", latitude, longitude, exc)
         enrichment.errors["weather"] = f"{type(exc).__name__}: {exc}"
+
+    # Land cover from the WorldCover raster. Unlike Overpass this has no
+    # coverage gaps, so it answers for the many fires OSM has nothing to say
+    # about. Returns None rather than raising if the raster is unreachable.
+    land_cover = await landcover_service.fetch_land_cover(latitude, longitude, radius_m)
+    enrichment.land_cover = land_cover.to_dict() if land_cover else None
+    if land_cover is None:
+        enrichment.errors["land_cover"] = "raster unavailable"
 
     return enrichment
 
@@ -220,8 +240,45 @@ async def persist_weather(
     )
 
 
+def _apply_risk(event: FireEvent, risk: RiskAssessment) -> None:
+    """Record the score and manage the incident lifecycle.
+
+    Crossing the threshold opens a 48-hour monitoring window. Falling back
+    below it does NOT immediately close the incident: a fire that dips for
+    one satellite pass has not stopped being an incident, and closing on the
+    first quiet reading would flap. The window expiring is what closes it.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    event.risk_score = risk.score
+    event.risk_level = risk.level
+    event.risk_components = risk.components
+    event.risk_updated_at = now
+
+    # A bounded trail, so an operator can see whether risk is climbing.
+    history = list(event.risk_history or [])
+    history.append({"at": now.isoformat(), "score": risk.score, "level": risk.level})
+    event.risk_history = history[-96:]  # 48 h at one reading every 30 min
+
+    if risk.score >= settings.RISK_INCIDENT_THRESHOLD:
+        event.is_actionable = True
+        # Each qualifying observation extends the window from now, so an
+        # event that keeps re-detecting stays tracked.
+        event.monitoring_until = now + datetime.timedelta(
+            hours=settings.INCIDENT_MONITORING_HOURS
+        )
+    elif not event.is_actionable:
+        # Explicit False, not None: the column default only applies on insert,
+        # so a freshly built event would otherwise carry a null through.
+        # Guarded on `not already actionable` so a single quiet reading cannot
+        # close an open incident - only the window expiring does that.
+        event.is_actionable = False
+
+
 async def classify_event(
-    db: AsyncSession, event: FireEvent, surroundings_dict: Optional[Dict[str, Any]]
+    db: AsyncSession,
+    event: FireEvent,
+    surroundings_dict: Optional[Dict[str, Any]],
+    land_cover: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the feature vector, score it, and assess impact.
 
@@ -229,7 +286,7 @@ async def classify_event(
     still gets a prediction, it just scores as `unknown` with the confidence
     penalty its thin inputs deserve.
     """
-    features = await build_feature_vector(db, event, surroundings_dict)
+    features = await build_feature_vector(db, event, surroundings_dict, land_cover=land_cover)
 
     # Validity FIRST: whether this is a fire at all is a different question
     # from what kind of fire it is, and asking them in the wrong order is how
@@ -247,6 +304,12 @@ async def classify_event(
     impact["risk_level"] = assess_impact(
         prediction.prediction, prediction.severity, features
     )["risk_level"]
+
+    # Stage 3: how dangerous, asked separately from what it is. Validity can
+    # only scale this DOWN - an event we doubt is a fire cannot be a
+    # high-risk fire.
+    risk = assess_risk(prediction.prediction, features, validity.p_real)
+    _apply_risk(event, risk)
 
     action = suggested_action(prediction.prediction, prediction.severity, features)
     if not validity.is_assessable:
@@ -277,6 +340,7 @@ async def classify_event(
             agriculture_probability=probabilities["agriculture"],
             gas_oil_probability=probabilities["gas_oil"],
             urban_probability=probabilities["urban"],
+            mining_probability=probabilities["mining"],
             unknown_probability=probabilities["unknown"],
             severity=prediction.severity,
             model_version=prediction.model_version,
@@ -310,7 +374,13 @@ async def classify_event(
             notes=impact["notes"],
         )
     )
-    return {"prediction": prediction, "impact": impact, "features": features, "validity": validity}
+    return {
+        "prediction": prediction,
+        "impact": impact,
+        "features": features,
+        "validity": validity,
+        "risk": risk,
+    }
 
 
 async def apply_enrichment(
@@ -342,8 +412,15 @@ async def apply_enrichment(
     if enrichment.weather is not None:
         await persist_weather(db, event, enrichment.weather)
 
+    if enrichment.land_cover and enrichment.land_cover.get("label") not in (None, "Unclassified"):
+        # The raster measured the ground; OSM only reported what was mapped.
+        event.land_cover = enrichment.land_cover["label"]
+
     outcome = await classify_event(
-        db, event, surroundings.to_dict() if surroundings else None
+        db,
+        event,
+        surroundings.to_dict() if surroundings else None,
+        land_cover=enrichment.land_cover,
     )
     prediction = outcome["prediction"]
     validity = outcome["validity"]
@@ -362,6 +439,9 @@ async def apply_enrichment(
         ),
         "validity": validity.verdict,
         "validity_pct": validity.confidence_pct,
+        "risk_score": outcome["risk"].score,
+        "risk_level": outcome["risk"].level,
+        "is_actionable": event.is_actionable,
         "prediction": prediction.prediction,
         "label": prediction.label,
         "confidence_pct": prediction.confidence_pct,
@@ -440,7 +520,9 @@ async def claim_pending(limit: int = 10) -> List[Dict[str, Any]]:
 
 
 async def analyse_claimed(
-    claim: Dict[str, Any], client: Optional[httpx.AsyncClient] = None
+    claim: Dict[str, Any],
+    client: Optional[httpx.AsyncClient] = None,
+    allow_overpass: bool = True,
 ) -> Dict[str, Any]:
     """Fetch and apply one already-claimed event, committing on its own.
 
@@ -461,6 +543,7 @@ async def analyse_claimed(
         cached_surroundings=cached,
         radius_m=radius_m,
         client=client,
+        allow_overpass=allow_overpass,
     )
 
     async with get_sessionmaker()() as db:
@@ -497,9 +580,19 @@ async def drain_pending(limit: int = 10) -> List[Dict[str, Any]]:
         timeout=settings.OVERPASS_TIMEOUT_S + 10,
         headers={"User-Agent": settings.HTTP_USER_AGENT},
     ) as client:
-        for claim in claims:
+        # 0 means unlimited, which is the default. When a budget is set for a
+        # bulk backfill, claims arrive highest-FRP first so it is spent where
+        # the industrial detail matters most.
+        budget = settings.OSM_MAX_LOOKUPS_PER_RUN
+        for index, claim in enumerate(claims):
             try:
-                results.append(await analyse_claimed(claim, client=client))
+                results.append(
+                    await analyse_claimed(
+                        claim,
+                        client=client,
+                        allow_overpass=budget <= 0 or index < budget,
+                    )
+                )
             except Exception:  # noqa: BLE001 - one bad event must not end the batch
                 continue
     return results

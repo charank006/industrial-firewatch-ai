@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useIntelligence } from '../../context/IntelligenceContext';
+import { classColor } from '../../utils/classColors';
+import type { ThermalHotspot } from '../../types';
 import Globe from 'globe.gl';
 import * as THREE from 'three';
 import {
@@ -64,6 +67,13 @@ const REGIONAL_HUBS: RegionalHub[] = [
 
 export const GlobalEarthPage: React.FC = () => {
   const navigate = useNavigate();
+
+  // The redesign plotted five hardcoded REGIONAL_HUBS and no live data, so
+  // the "Global Earth" view showed nothing the pipeline had actually
+  // detected. Real detections are added as their own points layer, leaving
+  // the hub markers, heat rings and orbital satellites untouched.
+  const { hotspots } = useIntelligence();
+  const hasFramedRef = useRef(false);
   
   const globeElRef = useRef<HTMLDivElement | null>(null);
   const globeInstanceRef = useRef<any>(null);
@@ -96,6 +106,16 @@ export const GlobalEarthPage: React.FC = () => {
     setTimeout(() => {
       navigate(`/command-center?sector=${hub.id}`);
     }, 1900);
+  };
+
+  /** Points the camera at the live detections' centroid. */
+  const handleFlyToLiveAoi = () => {
+    const world = globeInstanceRef.current;
+    if (!world || hotspots.length === 0) return;
+    const lat = hotspots.reduce((a, h) => a + h.lat, 0) / hotspots.length;
+    const lng = hotspots.reduce((a, h) => a + h.lng, 0) / hotspots.length;
+    world.controls().autoRotate = false;
+    world.pointOfView({ lat, lng, altitude: 1.0 }, 1500);
   };
 
   const handleResetCamera = () => {
@@ -142,6 +162,26 @@ export const GlobalEarthPage: React.FC = () => {
         .ringMaxRadius((d: any) => d.maxR)
         .ringPropagationSpeed((d: any) => d.propagationSpeed)
         .ringRepeatPeriod((d: any) => d.repeatPeriod)
+        // Live NASA FIRMS detections, class-coloured. A separate layer from
+        // the HTML hub markers so neither rendering path interferes with the
+        // other; seeded empty because fires arrive from the API after this.
+        .pointsData([] as ThermalHotspot[])
+        .pointLat((d: any) => d.lat)
+        .pointLng((d: any) => d.lng)
+        .pointColor((d: any) => classColor(d.classification))
+        .pointAltitude(0.006)
+        // Small: detections cluster within a few km and larger marks merged
+        // into one blob over the AOI.
+        .pointRadius((d: any) => Math.max(0.06, Math.min(0.2, 0.06 + Math.sqrt(d.frpMw) / 40)))
+        .pointsMerge(false)
+        .pointLabel(
+          (d: any) =>
+            `<div style="font:10px monospace;background:rgba(8,16,25,.95);border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:6px 8px;color:#fff">
+               <b>${d.id}</b><br/>${d.locationName} &bull; ${d.frpMw} MW<br/>
+               <span style="color:${classColor(d.classification)}">${d.classification}</span>
+             </div>`,
+        )
+        .onPointClick((d: any) => navigate(`/fire/${d.id}`))
         .htmlElementsData(REGIONAL_HUBS)
         .htmlElement((hub: RegionalHub) => {
           const wrapper = document.createElement('div');
@@ -168,9 +208,19 @@ export const GlobalEarthPage: React.FC = () => {
 
       // Controls
       world.pointOfView({ lat: 20.0, lng: 30.0, altitude: 2.2 }, 0);
-      world.controls().autoRotate = true;
-      world.controls().autoRotateSpeed = 0.35;
-      world.controls().enableZoom = true;
+      const controls = world.controls();
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.35;
+      controls.enableZoom = true;
+      controls.zoomSpeed = 1.6;
+      // OrbitControls stops well short of the surface by default, which is
+      // not close enough to separate detections a few kilometres apart.
+      controls.minDistance = 101;
+      controls.maxDistance = 800;
+      // The idle spin fights you the moment you try to look at something.
+      controls.addEventListener('start', () => {
+        controls.autoRotate = false;
+      });
 
       // THREE.JS SCENE: ADD REALISTIC SATELLITES IN 90° ORTHOGONAL ORBITAL PLANES
       const scene = world.scene();
@@ -538,6 +588,26 @@ export const GlobalEarthPage: React.FC = () => {
     }
   }, [filterMode]);
 
+  // Fires arrive from the API after the globe is built, and this effect
+  // re-runs on `filterMode`, so the data is pushed here rather than captured
+  // in the init closure - otherwise the layer stays permanently empty.
+  useEffect(() => {
+    const world = globeInstanceRef.current;
+    if (!world) return;
+    world.pointsData(hotspots);
+
+    // Frame the AOI the first time real data lands. The default camera sits
+    // over Africa, so the detections were on the far side of the globe and a
+    // viewer had to find them by hand.
+    if (hotspots.length > 0 && !hasFramedRef.current) {
+      hasFramedRef.current = true;
+      const lat = hotspots.reduce((a, h) => a + h.lat, 0) / hotspots.length;
+      const lng = hotspots.reduce((a, h) => a + h.lng, 0) / hotspots.length;
+      world.controls().autoRotate = false;
+      world.pointOfView({ lat, lng, altitude: 1.0 }, 1800);
+    }
+  }, [hotspots, filterMode]);
+
   return (
     <div className="relative w-full h-[calc(100vh-52px)] bg-[#04070D] overflow-hidden font-sans text-slate-100 selection:bg-cyan-500/20 select-none">
       
@@ -645,6 +715,17 @@ export const GlobalEarthPage: React.FC = () => {
             </span>
             <span className="text-slate-400 text-[10px]">CLICK HUB TO FLY-IN</span>
           </div>
+
+          {/* The hubs above are fixed reference points. This is the live
+              pipeline output actually plotted on the globe. */}
+          <button
+            onClick={handleFlyToLiveAoi}
+            disabled={hotspots.length === 0}
+            className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg border border-orange-400/40 bg-orange-500/10 text-[10px] font-mono text-orange-300 hover:bg-orange-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition"
+          >
+            <span>{hotspots.length} LIVE NASA FIRMS DETECTIONS</span>
+            <span className="text-orange-200">FLY TO AOI &rarr;</span>
+          </button>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {REGIONAL_HUBS.map((hub) => (

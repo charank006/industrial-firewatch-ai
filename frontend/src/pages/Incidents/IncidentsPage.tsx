@@ -20,14 +20,26 @@ import {
   X,
 } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
+import { RiskBadge } from '../../components/intelligence/RiskBadge';
+import { ValidityBadge } from '../../components/intelligence/ValidityBadge';
 import type { ThermalHotspot } from '../../types';
 
 export const IncidentsPage: React.FC = () => {
   const { hotspots, filteredHotspots, filters, setFilters, selectIncidentById } = useIntelligence();
   const navigate = useNavigate();
 
+  // Reconciles this list against NASA FIRMS' own map, which plots one point
+  // per satellite pixel while this plots one per clustered event.
+  const pixelCount = filteredHotspots.reduce((total, h) => total + h.detectionCount, 0);
+
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [selectedFacilityFilter, setSelectedFacilityFilter] = useState<string>('ALL');
+
+  // Nearest-site names actually present in the data. `nearestFacilityId` now
+  // holds the OSM site name, since an OSM way has no stable id across edits.
+  const facilityOptions = Array.from(
+    new Set(hotspots.map((h) => h.nearestFacilityId).filter(Boolean)),
+  ).sort();
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('ALL');
   
   // Forensic Audit Dossier Modal state
@@ -140,6 +152,9 @@ export const IncidentsPage: React.FC = () => {
           </div>
           <div className="text-slate-400 text-[11px]">
             Matching Records: <strong className="text-white font-bold">{auditLogs.length}</strong> / {hotspots.length}
+            <span className="block text-[10px] text-slate-500 mt-0.5">
+              {filteredHotspots.length} events clustered from {pixelCount} NASA FIRMS pixels
+            </span>
           </div>
         </div>
 
@@ -165,13 +180,16 @@ export const IncidentsPage: React.FC = () => {
               onChange={(e) => setSelectedFacilityFilter(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 bg-black border border-white/15 text-slate-200 text-xs rounded-lg focus:outline-none focus:border-cyan-400 transition"
             >
-              <option value="ALL">All Facilities (Global)</option>
-              <option value="FAC-001">Surat Petrochemicals Complex</option>
-              <option value="FAC-002">Hazira LNG Terminal</option>
-              <option value="FAC-003">Dahej Petrochemical Estate</option>
-              <option value="FAC-004">Vapi Chemical Manufacturing</option>
-              <option value="FAC-005">Jamnagar Export Refinery</option>
-              <option value="FAC-006">Bharuch Fertilizer Complex</option>
+              {/* The six FAC-00N Gujarat plants that were hardcoded here no
+                  longer exist: the curated registry was replaced by industrial
+                  sites derived from OpenStreetMap, so those options could
+                  never match a row again. Built from the live sites instead. */}
+              <option value="ALL">All Sites (Global)</option>
+              {facilityOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -282,6 +300,7 @@ export const IncidentsPage: React.FC = () => {
                 <th className="p-3.5 font-bold">AUDIT RECORD ID</th>
                 <th className="p-3.5 font-bold">TIMESTAMP (IST / UTC)</th>
                 <th className="p-3.5 font-bold">CLASSIFICATION</th>
+                <th className="p-3.5 font-bold">RISK &amp; VALIDITY</th>
                 <th className="p-3.5 font-bold">FACILITY & FENCE MATCH</th>
                 <th className="p-3.5 font-bold">FRP & BRIGHTNESS</th>
                 <th className="p-3.5 font-bold">VERDICT & PRIORITY</th>
@@ -320,6 +339,22 @@ export const IncidentsPage: React.FC = () => {
                       <td className="p-3.5">
                         <div className="font-semibold text-white font-sans text-xs">{item.classification}</div>
                         <div className="text-[10px] text-slate-400 font-mono">{item.landCover}</div>
+                      </td>
+
+                      {/* Risk and validity — three separate questions, kept
+                          separate: is it real, what is it, how dangerous. */}
+                      <td className="p-3.5">
+                        <div className="flex flex-col items-start gap-1">
+                          <RiskBadge
+                            score={item.riskScore}
+                            level={item.riskLevel}
+                            actionable={item.isActionable}
+                          />
+                          <ValidityBadge
+                            verdict={item.validityVerdict}
+                            confidencePct={item.validityConfidencePct}
+                          />
+                        </div>
                       </td>
 
                       {/* Facility & Fence Match */}

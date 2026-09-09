@@ -29,6 +29,7 @@ import {
   WeatherPanel,
 } from '../../components/intelligence/AnalysisPanels';
 import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
+import { RiskBadge } from '../../components/intelligence/RiskBadge';
 import {
   concernText,
   facilityDistance,
@@ -217,6 +218,32 @@ export const FireDetailPage: React.FC = () => {
           </p>
         )}
         <ProbabilityPanel prediction={analysis?.prediction ?? null} />
+      </section>
+
+      {/* STEP 3 — how dangerous, asked separately from what it is. */}
+      <section className="space-y-2">
+        <span className="text-[10px] uppercase tracking-wider text-[#3DB7D9] font-mono">
+          Step 3 — How dangerous is it?
+        </span>
+        <div className="rounded-lg border border-[#253340] bg-[#0A121E] p-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <RiskBadge
+              score={fire.riskScore}
+              level={fire.riskLevel}
+              actionable={fire.isActionable}
+            />
+            {fire.monitoringUntil && (
+              <span className="text-[10px] font-mono text-[#A7B4C1]">
+                Monitored until {new Date(fire.monitoringUntil).toLocaleString()}
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] leading-relaxed text-[#A7B4C1] font-sans">
+            Risk is scored independently of the source classification above. A confidently
+            identified crop fire in an empty field is low risk; a less certain industrial fire
+            beside housing is not. Only events above the threshold become tracked incidents.
+          </p>
+        </div>
       </section>
 
       {/* Raw satellite record — the input everything else is derived from. */}

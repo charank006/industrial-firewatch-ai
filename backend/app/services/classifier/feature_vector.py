@@ -115,7 +115,10 @@ async def history_days(db: AsyncSession) -> int:
 
 
 async def build_feature_vector(
-    db: AsyncSession, event: FireEvent, surroundings: Optional[Dict[str, Any]] = None
+    db: AsyncSession,
+    event: FireEvent,
+    surroundings: Optional[Dict[str, Any]] = None,
+    land_cover: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """One flat, ML-shaped dict combining every evidence source."""
     weather = (
@@ -177,7 +180,10 @@ async def build_feature_vector(
         # --- temporal -----------------------------------------------------
         "duration_hours": round(duration, 2),
         "recurrence_count": await recurrence_count(db, event),
-        "site_median_frp_mw": await site_median_frp(db, event) or 0.0,
+        # None, not 0.0: "no other detection within 1 km" is not the same as
+        # "this site normally runs at zero megawatts", and the risk engine
+        # treats the two very differently.
+        "site_median_frp_mw": await site_median_frp(db, event),
         "neighbour_events_10km_24h": await neighbour_event_count(db, event),
         "history_days": await history_days(db),
         # --- OSM (nullable end to end; Overpass may be unavailable) --------
@@ -227,6 +233,10 @@ async def build_feature_vector(
         "vpd_anomaly_kpa": None,
         "weather_baseline_quality": None,
         "weather_baseline_samples": 0,
+        "mines_within_1km": 0,
+        "nearest_mine_m": None,
+        "builtup_fraction": 0.0,
+        "land_cover_source": None,
     }
 
     if surroundings:
@@ -235,6 +245,7 @@ async def build_feature_vector(
             "farmland_area_km2", "farmland_fraction", "residential_area_km2",
             "residential_fraction", "water_area_km2", "factories_within_1km",
             "gas_facilities_within_1km", "power_infra_within_1km", "building_count",
+            "mines_within_1km", "nearest_mine_m",
             "hospitals", "schools", "fire_stations", "road_length_km", "nearest_factory_m",
             "nearest_gas_facility_m", "nearest_residential_m", "nearest_forest_m",
             "nearest_farmland_m", "inside_industrial", "inside_forest", "inside_farmland",
@@ -249,6 +260,47 @@ async def build_feature_vector(
         scrub = surroundings.get("scrub_grass_area_km2")
         if scrub is not None:
             features["scrub_grass_fraction"] = min(1.0, scrub / 3.14159)
+
+    # --- ESA WorldCover ---------------------------------------------------
+    # Takes precedence over OSM for physical ground cover. OSM records what
+    # someone chose to map, and across this AOI that is usually nothing: the
+    # fractions above are 0.0 for most events not because the land is bare
+    # but because no polygon exists. The raster measures every 10 m pixel.
+    #
+    # It does NOT take over industrial/gas/factory evidence: "Built-up" covers
+    # a refinery and an apartment block alike, and only OSM tags separate
+    # them.
+    if land_cover:
+        fr = land_cover.get("fractions") or {}
+        disc_km2 = 3.14159 * (float(land_cover.get("radius_m", 1000)) / 1000.0) ** 2
+
+        tree = (fr.get("tree_cover") or 0.0) + (fr.get("mangroves") or 0.0)
+        crop = fr.get("cropland") or 0.0
+        water = (fr.get("water") or 0.0) + (fr.get("herbaceous_wetland") or 0.0)
+        scrub_grass = (
+            (fr.get("shrubland") or 0.0)
+            + (fr.get("grassland") or 0.0)
+            + (fr.get("bare_sparse") or 0.0)
+        )
+        built = fr.get("built_up") or 0.0
+
+        features.update({
+            "forest_fraction": round(tree, 4),
+            "forest_area_km2": round(tree * disc_km2, 4),
+            "farmland_fraction": round(crop, 4),
+            "farmland_area_km2": round(crop * disc_km2, 4),
+            "scrub_grass_fraction": round(scrub_grass, 4),
+            "water_area_km2": round(water * disc_km2, 4),
+            # New: WorldCover is the only source that measures built-up cover
+            # everywhere. The urban class had nothing but sparse OSM
+            # residential polygons to work with.
+            "builtup_fraction": round(built, 4),
+            "land_cover_source": land_cover.get("source"),
+            "land_cover_dominant": land_cover.get("dominant"),
+            "land_cover_pixels": land_cover.get("pixel_count"),
+        })
+        if land_cover.get("label") and land_cover["label"] != "Unclassified":
+            features["land_cover"] = land_cover["label"]
 
     if weather is not None:
         features.update(

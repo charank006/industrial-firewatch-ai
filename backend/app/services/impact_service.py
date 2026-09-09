@@ -25,6 +25,7 @@ POTENTIAL_POLLUTANTS: Dict[str, List[str]] = {
     "forest": ["CO", "CO2", "NOx", "VOCs", "PM2.5", "PM10"],
     "agriculture": ["CO", "CO2", "CH4", "NH3", "PM2.5", "PM10"],
     "urban": ["CO", "CO2", "NOx", "VOCs", "PM2.5", "PM10", "Dioxins/furans"],
+    "mining": ["CO", "CO2", "SO2", "NOx", "PM2.5", "PM10", "Mercury", "Trace metals"],
     "unknown": ["CO", "CO2", "PM2.5", "PM10"],
 }
 
