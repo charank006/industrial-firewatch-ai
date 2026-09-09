@@ -74,6 +74,19 @@ class Settings(BaseSettings):
     OSM_ANALYSIS_RADIUS_M: int = 1000
     HTTP_USER_AGENT: str = "fire-intelligence/0.1 (industrial-firewatch)"
 
+    # --- 7-Day Persistence Engine (GeoFlare Architecture) ----------------
+    PERSISTENCE_DAYS: int = 7
+    PERSISTENCE_RADIUS_METERS: float = 500.0
+    PERSISTENCE_THRESHOLD: int = 5  # 5-7 active days / 7 -> persistent thermal source
+
+    # --- ML Multiclass Classifier (LightGBM) -----------------------------
+    ML_CONFIDENCE_THRESHOLD: float = 0.40  # if max prob < threshold -> unknown
+    ML_MODELS_DIR: str = "models"
+    ML_MODEL_PATH: str = "models/geoflare_lightgbm.joblib"
+    ML_FEATURE_SCHEMA_PATH: str = "models/feature_schema.json"
+    ML_CLASS_MAPPING_PATH: str = "models/class_mapping.json"
+    ML_METADATA_PATH: str = "models/model_metadata.json"
+
     # --- Fire event dedup engine (spec 7) --------------------------------
     EVENT_LINK_RADIUS_M: float = 1000.0
     EVENT_LINK_WINDOW_HOURS: int = 12

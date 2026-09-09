@@ -18,10 +18,13 @@ inventing a class. Its severity is an openly provisional FRP band, flagged
 from __future__ import annotations
 
 import datetime
+import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -36,9 +39,35 @@ from app.models.models import (
     WeatherAnomalyRecord,
     WeatherObservation,
 )
+from app.services.classifier.lightgbm_service import (
+    derive_severity_from_prediction,
+    get_model_holder,
+    predict_thermal_source,
+)
 from app.services.classifier.scorer import CLASS_LABEL
+from app.services.persistence.persistence_service import evaluate_persistence
+from ml.feature_schema import (
+    CANONICAL_CLASSES,
+    CLASS_DISPLAY_NAMES,
+    FEATURE_NAMES,
+    extract_feature_vector,
+)
 
 router = APIRouter(tags=["fires"])
+
+MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
+
+
+class PredictRequest(BaseModel):
+    event_id: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    frp_mw: Optional[float] = None
+    detection_count: Optional[int] = 1
+    features: Optional[Dict[str, Any]] = None
+    exposure_count: Optional[int] = 0
+    confidence_threshold: Optional[float] = None
+
 
 # Model version for the interim, pre-Phase-5 labelling. Swapping this for
 # "rules-v1.<hash>" is the only change the contract needs when the real
@@ -204,17 +233,39 @@ def serialise_event(
         },
     ]
 
-    if prediction is not None:
+    is_persistent = bool(event.is_persistent or (prediction and prediction.is_persistent))
+    active_days_7d = event.active_days_7d if event.active_days_7d is not None else (prediction.active_days_7d if prediction else 0)
+    persistence_status = "Persistent Thermal Source" if is_persistent else (event.persistence_status or "Non-Persistent Event")
+
+    if is_persistent:
+        predicted_class = "persistent_thermal_source"
+        predicted_label = "Persistent Thermal Source"
+        classification_confidence = 100
+        probabilities = None
+    elif prediction is not None:
+        predicted_class = prediction.predicted_class
+        predicted_label = CLASS_LABEL.get(prediction.predicted_class, prediction.predicted_class)
+        classification_confidence = prediction.confidence_pct
         probabilities = {
+            "forest_fire": prediction.forest_probability if hasattr(prediction, "forest_probability") else 0.0,
+            "agricultural_burning": prediction.agriculture_probability if hasattr(prediction, "agriculture_probability") else 0.0,
+            "industrial_fire": prediction.industrial_probability if hasattr(prediction, "industrial_probability") else 0.0,
+            "gas_oil_flare": prediction.flare_probability if hasattr(prediction, "flare_probability") else (prediction.gas_oil_probability if hasattr(prediction, "gas_oil_probability") else 0.0),
+            "urban_other": prediction.urban_probability if hasattr(prediction, "urban_probability") else 0.0,
+            "unknown": prediction.unknown_probability if hasattr(prediction, "unknown_probability") else 0.0,
+            # Backwards compatibility keys
             "industrial": prediction.industrial_probability,
             "flare": prediction.flare_probability,
             "forest": prediction.forest_probability,
             "agriculture": prediction.agriculture_probability,
             "gas_oil": prediction.gas_oil_probability,
             "urban": prediction.urban_probability,
-            "unknown": prediction.unknown_probability,
         }
         reasoning = prediction.reasoning_steps or reasoning
+    else:
+        predicted_class = None
+        predicted_label = None
+        classification_confidence = None
 
     return {
         "fire_event_id": event.id,
@@ -230,12 +281,10 @@ def serialise_event(
         "frp_max_mw": round(event.frp_max_mw, 2),
         "frp_mean_mw": round(event.frp_mean_mw, 2),
         "brightness_k": event.brightness_k,
-        # NASA's own detection confidence - distinct from classification
-        # confidence, which does not exist until Phase 5.
         "detection_confidence_pct": event.detection_confidence_pct,
-        # Validity is a SEPARATE verdict from source class and is never merged
-        # into it: "is this a fire" and "what kind of fire" are different
-        # questions with different answers.
+        "is_persistent": is_persistent,
+        "active_days_7d": active_days_7d,
+        "persistence_status": persistence_status,
         "validity": (
             {
                 "verdict": prediction.validity_verdict,
@@ -247,23 +296,21 @@ def serialise_event(
             if prediction and prediction.validity_verdict
             else None
         ),
-        "prediction": prediction.predicted_class if prediction else None,
-        "prediction_label": CLASS_LABEL.get(prediction.predicted_class) if prediction else None,
-        "classification_confidence_pct": prediction.confidence_pct if prediction else None,
-        "probabilities": probabilities if prediction else None,
-        "model_version": prediction.model_version if prediction else INTERIM_MODEL_VERSION,
-        "model_kind": prediction.model_kind if prediction else "none",
+        "prediction": predicted_class,
+        "prediction_label": predicted_label,
+        "classification_confidence_pct": classification_confidence,
+        "probabilities": probabilities,
+        "model_version": prediction.model_version if prediction else (
+            "persistence_v1.0" if is_persistent else INTERIM_MODEL_VERSION
+        ),
+        "model_kind": "persistence_filter" if is_persistent else (prediction.model_kind if prediction else "none"),
         "data_quality": prediction.data_quality if prediction else None,
-        "severity": severity,
-        # True only while an event has no real prediction; the FRP band is a
-        # placeholder, and the dashboard must be able to say so.
-        "severity_is_provisional": prediction is None,
-        "land_cover": event.land_cover,  # populated in Phase 4
+        "severity": "LOW" if is_persistent else severity,
+        "severity_is_provisional": prediction is None and not is_persistent,
+        "land_cover": event.land_cover,
         "location_name": event.location_name
         or f"{abs(event.latitude):.4f}°{'N' if event.latitude >= 0 else 'S'}, "
         f"{abs(event.longitude):.4f}°{'E' if event.longitude >= 0 else 'W'}",
-        # From OpenStreetMap, so there is no registry id: the name is the
-        # identity, and a genuine site can be unnamed.
         "nearest_facility_id": event.nearest_industrial_site,
         "nearest_facility_name": event.nearest_industrial_site,
         "nearest_facility_type": event.nearest_industrial_type,
@@ -276,9 +323,13 @@ def serialise_event(
         "is_new": event.detection_count <= 1,
         "reasoning_steps": reasoning,
         "suggested_action": (
-            prediction.suggested_action
-            if prediction and prediction.suggested_action
-            else "AWAITING ANALYSIS: Thermal anomaly detected; source classification pending enrichment."
+            "PERSISTENT SOURCE: 5+ active days detected in 7-day observation window. Routine industrial/flare installation."
+            if is_persistent
+            else (
+                prediction.suggested_action
+                if prediction and prediction.suggested_action
+                else "AWAITING ANALYSIS: Thermal anomaly detected; source classification pending enrichment."
+            )
         ),
     }
 
@@ -780,3 +831,234 @@ async def get_analysis(fire_id: str, db: AsyncSession = Depends(get_db)) -> Dict
         "prediction": await optional(get_prediction(fire_id, db)),
         "impact": await optional(get_impact(fire_id, db)),
     }
+
+
+@router.post("/api/predict")
+async def predict_thermal_anomaly(
+    req: PredictRequest,
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """Classify a thermal anomaly event using the 2-stage GeoFlare pipeline:
+    Stage 1: 7-Day Persistence Pre-Filter (5-7 active days -> Persistent Thermal Source, LightGBM bypassed).
+    Stage 2: LightGBM Multiclass ML Classifier (only for non-persistent sources).
+    """
+    event_id = req.event_id
+
+    # Path 1: Existing FireEvent in database
+    if event_id:
+        event = (
+            await db.execute(
+                select(FireEvent).where(FireEvent.id == event_id)
+            )
+        ).scalar_one_or_none()
+        if event is None:
+            raise HTTPException(status_code=404, detail=f"Fire event '{event_id}' not found")
+
+        # Stage 1: Evaluate 7-Day Persistence
+        persistence_eval = await evaluate_persistence(db, event)
+        if persistence_eval.is_persistent:
+            return {
+                "fire_event_id": event.id,
+                "is_persistent": True,
+                "active_days_7d": persistence_eval.active_days,
+                "persistence_status": "Persistent Thermal Source",
+                "lightgbm_executed": False,
+                "prediction": "persistent_thermal_source",
+                "prediction_label": "Persistent Thermal Source",
+                "classification_confidence_pct": 100,
+                "probabilities": None,
+                "severity": "LOW",
+                "suggested_action": "PERSISTENT SOURCE: Continuous thermal signature detected across 5+ days. Routine industrial/flare installation.",
+                "reasoning_steps": [
+                    {
+                        "step_index": 1,
+                        "label": "7-Day Persistence Pre-Filter",
+                        "detail": persistence_eval.reason,
+                        "status": "passed",
+                    }
+                ],
+                "explanation": "LightGBM model was NOT executed because 7-day persistence pre-filter confirmed this is a persistent thermal source.",
+            }
+
+        # Stage 2: Non-persistent -> Extract features & execute LightGBM
+        predictions = await latest_predictions(db, [event.id])
+        pred_record = predictions.get(event.id)
+        raw_features = pred_record.feature_snapshot if pred_record and pred_record.feature_snapshot else (req.features or {})
+
+        # Populate basic event features if not already in snapshot
+        raw_features.setdefault("latitude", event.latitude)
+        raw_features.setdefault("longitude", event.longitude)
+        raw_features.setdefault("frp_latest_mw", event.frp_latest_mw)
+        raw_features.setdefault("frp_max_mw", event.frp_max_mw)
+        raw_features.setdefault("frp_mean_mw", event.frp_mean_mw)
+        raw_features.setdefault("brightness_k", event.brightness_k)
+        raw_features.setdefault("detection_count", event.detection_count)
+        raw_features.setdefault("inside_industrial", 1.0 if event.inside_industrial_site else 0.0)
+
+        ml_pred = predict_thermal_source(
+            raw_features,
+            exposure_count=req.exposure_count or 0,
+            confidence_threshold=req.confidence_threshold,
+        )
+
+        return {
+            "fire_event_id": event.id,
+            "is_persistent": False,
+            "active_days_7d": persistence_eval.active_days,
+            "persistence_status": "Non-Persistent Event",
+            "lightgbm_executed": True,
+            "prediction": ml_pred.predicted_class,
+            "prediction_label": ml_pred.predicted_label,
+            "classification_confidence_pct": ml_pred.confidence_pct,
+            "probabilities": ml_pred.probabilities,
+            "severity": ml_pred.severity,
+            "model_version": ml_pred.model_version,
+            "model_kind": ml_pred.model_kind,
+            "suggested_action": ml_pred.suggested_action,
+            "reasoning_steps": ml_pred.reasoning_steps,
+            "feature_vector": ml_pred.feature_vector,
+            "explanation": "Event classified via LightGBM multiclass GBDT model across 6 canonical source classes.",
+        }
+
+    # Path 2: Ad-hoc feature payload without DB record
+    features = req.features or {}
+    if req.latitude is not None:
+        features.setdefault("latitude", req.latitude)
+    if req.longitude is not None:
+        features.setdefault("longitude", req.longitude)
+    if req.frp_mw is not None:
+        features.setdefault("frp_latest_mw", req.frp_mw)
+    if req.detection_count is not None:
+        features.setdefault("detection_count", req.detection_count)
+
+    active_days_7d = int(features.get("active_days_7d") or features.get("active_days") or 0)
+    is_persistent = bool(features.get("is_persistent") or active_days_7d >= settings.PERSISTENCE_THRESHOLD)
+
+    if is_persistent:
+        return {
+            "fire_event_id": None,
+            "is_persistent": True,
+            "active_days_7d": active_days_7d,
+            "persistence_status": "Persistent Thermal Source",
+            "lightgbm_executed": False,
+            "prediction": "persistent_thermal_source",
+            "prediction_label": "Persistent Thermal Source",
+            "classification_confidence_pct": 100,
+            "probabilities": None,
+            "severity": "LOW",
+            "suggested_action": "PERSISTENT SOURCE: Continuous thermal signature detected across 5+ days. Routine industrial/flare installation.",
+            "reasoning_steps": [
+                {
+                    "step_index": 1,
+                    "label": "7-Day Persistence Pre-Filter",
+                    "detail": f"Active on {active_days_7d}/7 days (threshold >= {settings.PERSISTENCE_THRESHOLD}). Persistent Thermal Source.",
+                    "status": "passed",
+                }
+            ],
+            "explanation": "LightGBM was NOT executed because 7-day persistence confirmed persistent thermal source.",
+        }
+
+    ml_pred = predict_thermal_source(
+        features,
+        exposure_count=req.exposure_count or 0,
+        confidence_threshold=req.confidence_threshold,
+    )
+
+    return {
+        "fire_event_id": None,
+        "is_persistent": False,
+        "active_days_7d": active_days_7d,
+        "persistence_status": "Non-Persistent Event",
+        "lightgbm_executed": True,
+        "prediction": ml_pred.predicted_class,
+        "prediction_label": ml_pred.predicted_label,
+        "classification_confidence_pct": ml_pred.confidence_pct,
+        "probabilities": ml_pred.probabilities,
+        "severity": ml_pred.severity,
+        "model_version": ml_pred.model_version,
+        "model_kind": ml_pred.model_kind,
+        "suggested_action": ml_pred.suggested_action,
+        "reasoning_steps": ml_pred.reasoning_steps,
+        "feature_vector": ml_pred.feature_vector,
+        "explanation": "Ad-hoc thermal anomaly classified via LightGBM multiclass GBDT model.",
+    }
+
+
+@router.get("/api/ml/metrics")
+async def get_ml_metrics() -> Dict[str, Any]:
+    """Return model comparison and validation metrics."""
+    metrics_path = MODELS_DIR / "metrics.json"
+    if metrics_path.exists():
+        try:
+            with open(metrics_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error reading metrics artifact: {e}")
+    return {
+        "status": "uninitialized",
+        "message": "Model training metrics artifact not found.",
+        "primary_model": "lightgbm",
+        "classes": CANONICAL_CLASSES,
+    }
+
+
+@router.get("/api/ml/schema")
+async def get_ml_schema() -> Dict[str, Any]:
+    """Return canonical 32-feature schema and class mapping metadata."""
+    schema_path = MODELS_DIR / "feature_schema.json"
+    mapping_path = MODELS_DIR / "class_mapping.json"
+    metadata_path = MODELS_DIR / "model_metadata.json"
+
+    result: Dict[str, Any] = {
+        "features": FEATURE_NAMES,
+        "feature_count": len(FEATURE_NAMES),
+        "classes": CANONICAL_CLASSES,
+        "display_names": CLASS_DISPLAY_NAMES,
+    }
+
+    if schema_path.exists():
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                result["feature_schema"] = json.load(f)
+        except Exception:
+            pass
+
+    if mapping_path.exists():
+        try:
+            with open(mapping_path, "r", encoding="utf-8") as f:
+                result["class_mapping"] = json.load(f)
+        except Exception:
+            pass
+
+    if metadata_path.exists():
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                result["model_metadata"] = json.load(f)
+        except Exception:
+            pass
+
+    return result
+
+
+@router.post("/api/firms/sync")
+@router.get("/api/firms/sync")
+async def sync_live_firms(day_range: int = Query(3, ge=1, le=10)) -> Dict[str, Any]:
+    """Trigger real-time satellite data fetch from NASA FIRMS API across India,
+    evaluate 7-day persistence, classify non-persistent detections with LightGBM,
+    and synchronize live points to the map.
+    """
+    from app.services.ingestion.firms_live_syncer import run_live_pipeline
+    try:
+        res = await run_live_pipeline(day_range=day_range, train_model=False)
+        return {
+            "status": "success",
+            "message": f"Successfully synced {res.get('total_detections', 0)} live NASA FIRMS thermal points across India.",
+            "total_detections": res.get("total_detections", 0),
+            "class_counts": res.get("class_counts", {}),
+            "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        logger.error("Error during live FIRMS sync: %s", e)
+        raise HTTPException(status_code=500, detail=f"NASA FIRMS sync failed: {e}")
+
+

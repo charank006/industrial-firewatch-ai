@@ -1,0 +1,34 @@
+{
+  "classes": [
+    "forest_fire",
+    "agricultural_burning",
+    "industrial_fire",
+    "gas_oil_flare",
+    "urban_other",
+    "unknown"
+  ],
+  "class_to_index": {
+    "forest_fire": 0,
+    "agricultural_burning": 1,
+    "industrial_fire": 2,
+    "gas_oil_flare": 3,
+    "urban_other": 4,
+    "unknown": 5
+  },
+  "index_to_class": {
+    "0": "forest_fire",
+    "1": "agricultural_burning",
+    "2": "industrial_fire",
+    "3": "gas_oil_flare",
+    "4": "urban_other",
+    "5": "unknown"
+  },
+  "display_names": {
+    "forest_fire": "Forest Fire",
+    "agricultural_burning": "Agricultural Burning",
+    "industrial_fire": "Industrial Fire",
+    "gas_oil_flare": "Gas/Oil Flare",
+    "urban_other": "Urban / Other",
+    "unknown": "Unknown Anomaly"
+  }
+}

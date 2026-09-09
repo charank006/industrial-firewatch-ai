@@ -103,6 +103,11 @@ class FireEvent(Base):
     nearest_industrial_distance_m = Column(Float, nullable=True)
     inside_industrial_site = Column(Boolean, nullable=False, default=False)
 
+    # 7-Day Persistence Engine fields
+    is_persistent = Column(Boolean, nullable=False, default=False)
+    active_days_7d = Column(SmallInteger, nullable=False, default=0)
+    persistence_status = Column(String, nullable=True)  # persistent_thermal_source | episodic
+
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -116,6 +121,7 @@ class FireEvent(Base):
         # KNN ordering, so this composite carries it.
         Index("ix_fire_events_status_last_detected", "status", "last_detected"),
         Index("ix_fire_events_analysis_status", "analysis_status"),
+        Index("ix_fire_events_is_persistent", "is_persistent"),
     )
 
 
@@ -279,17 +285,21 @@ class FirePrediction(Base):
     confidence = Column(Float, nullable=False, default=0.0)
     confidence_pct = Column(SmallInteger, nullable=False, default=0)
 
-    industrial_probability = Column(Float, nullable=False, default=0.0)
-    flare_probability = Column(Float, nullable=False, default=0.0)
+    # 6 Canonical ML Classes + backwards-compatibility flare
     forest_probability = Column(Float, nullable=False, default=0.0)
     agriculture_probability = Column(Float, nullable=False, default=0.0)
+    industrial_probability = Column(Float, nullable=False, default=0.0)
     gas_oil_probability = Column(Float, nullable=False, default=0.0)
     urban_probability = Column(Float, nullable=False, default=0.0)
     unknown_probability = Column(Float, nullable=False, default=0.0)
+    flare_probability = Column(Float, nullable=False, default=0.0)
+
+    is_persistent = Column(Boolean, nullable=False, default=False)
+    active_days_7d = Column(SmallInteger, nullable=False, default=0)
 
     severity = Column(String, nullable=False, default="MEDIUM")
     model_version = Column(String, nullable=False)
-    model_kind = Column(String, nullable=False, default="rule_scorer")
+    model_kind = Column(String, nullable=False, default="lightgbm")
     data_quality = Column(Float, nullable=False, default=1.0)
 
     reasoning_steps = Column(JSONB, nullable=True)
@@ -331,3 +341,19 @@ class ImpactAssessment(Base):
     notes = Column(JSONB, nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class GroundTruth(Base):
+    """Independent verified ground-truth labels for ML training and evaluation."""
+
+    __tablename__ = "ground_truth"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String, ForeignKey("fire_events.id"), nullable=False, index=True)
+    label = Column(String, nullable=False)  # forest_fire | agricultural_burning | industrial_fire | gas_oil_flare | urban_other | unknown
+    label_source = Column(String, nullable=False)  # fire_department_record | government_report | satellite_verified | modis_burned_area
+    label_confidence = Column(Float, nullable=False, default=1.0)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+

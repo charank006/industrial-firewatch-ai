@@ -1,0 +1,296 @@
+{
+  "version": "geoflare_schema_v1.0",
+  "feature_count": 32,
+  "features": [
+    {
+      "name": "frp_latest_mw",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Latest Fire Radiative Power in MW",
+      "min_value": 0.0,
+      "max_value": 10000.0
+    },
+    {
+      "name": "frp_max_mw",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Maximum Fire Radiative Power in MW",
+      "min_value": 0.0,
+      "max_value": 10000.0
+    },
+    {
+      "name": "frp_mean_mw",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Mean Fire Radiative Power in MW",
+      "min_value": 0.0,
+      "max_value": 10000.0
+    },
+    {
+      "name": "brightness_k",
+      "dtype": "float",
+      "default_value": 300.0,
+      "description": "Channel Brightness Temperature in Kelvin",
+      "min_value": 200.0,
+      "max_value": 500.0
+    },
+    {
+      "name": "detection_confidence_pct",
+      "dtype": "float",
+      "default_value": 50.0,
+      "description": "NASA Sensor Detection Confidence %",
+      "min_value": 0.0,
+      "max_value": 100.0
+    },
+    {
+      "name": "bright_ti4",
+      "dtype": "float",
+      "default_value": 300.0,
+      "description": "VIIRS I4 (3.9um) Brightness Temperature in K",
+      "min_value": 200.0,
+      "max_value": 500.0
+    },
+    {
+      "name": "bright_ti5",
+      "dtype": "float",
+      "default_value": 290.0,
+      "description": "VIIRS I5 (11um) Brightness Temperature in K",
+      "min_value": 200.0,
+      "max_value": 500.0
+    },
+    {
+      "name": "thermal_contrast_k",
+      "dtype": "float",
+      "default_value": 10.0,
+      "description": "I4 - I5 Thermal Contrast in Kelvin",
+      "min_value": -50.0,
+      "max_value": 150.0
+    },
+    {
+      "name": "scan",
+      "dtype": "float",
+      "default_value": 0.4,
+      "description": "Satellite Scan Angle / Pixel Footprint Factor",
+      "min_value": 0.1,
+      "max_value": 5.0
+    },
+    {
+      "name": "track",
+      "dtype": "float",
+      "default_value": 0.4,
+      "description": "Satellite Track Pixel Size",
+      "min_value": 0.1,
+      "max_value": 5.0
+    },
+    {
+      "name": "detection_count",
+      "dtype": "int",
+      "default_value": 1.0,
+      "description": "Total Satellite Observations in Event",
+      "min_value": 1.0,
+      "max_value": 1000.0
+    },
+    {
+      "name": "duration_hours",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Event Duration in Hours",
+      "min_value": 0.0,
+      "max_value": 720.0
+    },
+    {
+      "name": "day_night_numeric",
+      "dtype": "int",
+      "default_value": 0.0,
+      "description": "1 if Night pass, 0 if Day pass",
+      "min_value": 0.0,
+      "max_value": 1.0
+    },
+    {
+      "name": "hour_of_day",
+      "dtype": "int",
+      "default_value": 12.0,
+      "description": "Hour of Day (0-23 UTC)",
+      "min_value": 0.0,
+      "max_value": 23.0
+    },
+    {
+      "name": "month",
+      "dtype": "int",
+      "default_value": 1.0,
+      "description": "Month of Year (1-12)",
+      "min_value": 1.0,
+      "max_value": 12.0
+    },
+    {
+      "name": "industrial_fraction",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Industrial Land Area Fraction within 1km",
+      "min_value": 0.0,
+      "max_value": 1.0
+    },
+    {
+      "name": "forest_fraction",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Forest / Woodland Area Fraction within 1km",
+      "min_value": 0.0,
+      "max_value": 1.0
+    },
+    {
+      "name": "farmland_fraction",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Cropland / Farmland Area Fraction within 1km",
+      "min_value": 0.0,
+      "max_value": 1.0
+    },
+    {
+      "name": "residential_fraction",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Residential / Urban Area Fraction within 1km",
+      "min_value": 0.0,
+      "max_value": 1.0
+    },
+    {
+      "name": "water_fraction",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Water Body Area Fraction within 1km",
+      "min_value": 0.0,
+      "max_value": 1.0
+    },
+    {
+      "name": "factories_within_1km",
+      "dtype": "int",
+      "default_value": 0.0,
+      "description": "Count of Mapped Industrial Plants within 1km",
+      "min_value": 0.0,
+      "max_value": 100.0
+    },
+    {
+      "name": "gas_facilities_within_1km",
+      "dtype": "int",
+      "default_value": 0.0,
+      "description": "Count of Gas / Petroleum Facilities within 1km",
+      "min_value": 0.0,
+      "max_value": 50.0
+    },
+    {
+      "name": "power_infra_within_1km",
+      "dtype": "int",
+      "default_value": 0.0,
+      "description": "Count of Power Substations / Plants within 1km",
+      "min_value": 0.0,
+      "max_value": 50.0
+    },
+    {
+      "name": "building_count",
+      "dtype": "int",
+      "default_value": 0.0,
+      "description": "Count of Built Structures within 1km",
+      "min_value": 0.0,
+      "max_value": 1000.0
+    },
+    {
+      "name": "nearest_factory_m",
+      "dtype": "float",
+      "default_value": 5000.0,
+      "description": "Distance to Nearest Industrial Site in meters",
+      "min_value": 0.0,
+      "max_value": 50000.0
+    },
+    {
+      "name": "nearest_gas_facility_m",
+      "dtype": "float",
+      "default_value": 5000.0,
+      "description": "Distance to Nearest Gas/Oil Site in meters",
+      "min_value": 0.0,
+      "max_value": 50000.0
+    },
+    {
+      "name": "inside_industrial",
+      "dtype": "int",
+      "default_value": 0.0,
+      "description": "1 if Centroid is inside Industrial Parcel, else 0",
+      "min_value": 0.0,
+      "max_value": 1.0
+    },
+    {
+      "name": "temperature_c",
+      "dtype": "float",
+      "default_value": 25.0,
+      "description": "Ambient Air Temperature in Celsius",
+      "min_value": -40.0,
+      "max_value": 60.0
+    },
+    {
+      "name": "temperature_anomaly_c",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Temperature Deviation from 6-Day Baseline in C",
+      "min_value": -30.0,
+      "max_value": 30.0
+    },
+    {
+      "name": "humidity_pct",
+      "dtype": "float",
+      "default_value": 50.0,
+      "description": "Relative Humidity %",
+      "min_value": 0.0,
+      "max_value": 100.0
+    },
+    {
+      "name": "wind_speed_ms",
+      "dtype": "float",
+      "default_value": 3.0,
+      "description": "Surface Wind Speed in m/s",
+      "min_value": 0.0,
+      "max_value": 50.0
+    },
+    {
+      "name": "vpd_anomaly_kpa",
+      "dtype": "float",
+      "default_value": 0.0,
+      "description": "Vapour Pressure Deficit Anomaly in kPa",
+      "min_value": -5.0,
+      "max_value": 10.0
+    }
+  ],
+  "feature_names": [
+    "frp_latest_mw",
+    "frp_max_mw",
+    "frp_mean_mw",
+    "brightness_k",
+    "detection_confidence_pct",
+    "bright_ti4",
+    "bright_ti5",
+    "thermal_contrast_k",
+    "scan",
+    "track",
+    "detection_count",
+    "duration_hours",
+    "day_night_numeric",
+    "hour_of_day",
+    "month",
+    "industrial_fraction",
+    "forest_fraction",
+    "farmland_fraction",
+    "residential_fraction",
+    "water_fraction",
+    "factories_within_1km",
+    "gas_facilities_within_1km",
+    "power_infra_within_1km",
+    "building_count",
+    "nearest_factory_m",
+    "nearest_gas_facility_m",
+    "inside_industrial",
+    "temperature_c",
+    "temperature_anomaly_c",
+    "humidity_pct",
+    "wind_speed_ms",
+    "vpd_anomaly_kpa"
+  ]
+}

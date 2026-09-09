@@ -1,0 +1,840 @@
+{
+  "model_name": "GeoFlare LightGBM Multiclass Source Classifier",
+  "model_version": "lightgbm_v1.0.0",
+  "model_format": "lightgbm_scikit_learn",
+  "trained_at_utc": "2026-09-09T09:57:37.339293+00:00",
+  "target_classes": [
+    "forest_fire",
+    "agricultural_burning",
+    "industrial_fire",
+    "gas_oil_flare",
+    "urban_other",
+    "unknown"
+  ],
+  "class_display_names": {
+    "forest_fire": "Forest Fire",
+    "agricultural_burning": "Agricultural Burning",
+    "industrial_fire": "Industrial Fire",
+    "gas_oil_flare": "Gas/Oil Flare",
+    "urban_other": "Urban / Other",
+    "unknown": "Unknown Anomaly"
+  },
+  "feature_count": 32,
+  "feature_names": [
+    "frp_latest_mw",
+    "frp_max_mw",
+    "frp_mean_mw",
+    "brightness_k",
+    "detection_confidence_pct",
+    "bright_ti4",
+    "bright_ti5",
+    "thermal_contrast_k",
+    "scan",
+    "track",
+    "detection_count",
+    "duration_hours",
+    "day_night_numeric",
+    "hour_of_day",
+    "month",
+    "industrial_fraction",
+    "forest_fraction",
+    "farmland_fraction",
+    "residential_fraction",
+    "water_fraction",
+    "factories_within_1km",
+    "gas_facilities_within_1km",
+    "power_infra_within_1km",
+    "building_count",
+    "nearest_factory_m",
+    "nearest_gas_facility_m",
+    "inside_industrial",
+    "temperature_c",
+    "temperature_anomaly_c",
+    "humidity_pct",
+    "wind_speed_ms",
+    "vpd_anomaly_kpa"
+  ],
+  "training_samples_count": 3000,
+  "india_geofencing_enforced": true,
+  "india_bounding_box": {
+    "min_latitude": 6.5,
+    "max_latitude": 37.5,
+    "min_longitude": 68.0,
+    "max_longitude": 97.5
+  },
+  "dataset_spatial_extents": {
+    "min_latitude": 11.506786446849313,
+    "max_latitude": 31.79044907433313,
+    "min_longitude": 72.19895753642159,
+    "max_longitude": 84.98942534821104
+  },
+  "dataset_source": "generated_india_benchmark_n3000",
+  "class_distribution": {
+    "forest_fire": {
+      "count": 766,
+      "percentage": 25.53
+    },
+    "agricultural_burning": {
+      "count": 877,
+      "percentage": 29.23
+    },
+    "industrial_fire": {
+      "count": 596,
+      "percentage": 19.87
+    },
+    "gas_oil_flare": {
+      "count": 302,
+      "percentage": 10.07
+    },
+    "urban_other": {
+      "count": 294,
+      "percentage": 9.8
+    },
+    "unknown": {
+      "count": 165,
+      "percentage": 5.5
+    }
+  },
+  "leakage_split_evaluations": {
+    "random": {
+      "metadata": {
+        "method": "random",
+        "test_ratio": 0.2
+      },
+      "train_samples": 2400,
+      "test_samples": 600,
+      "metrics": {
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "macro_precision": 1.0,
+        "macro_recall": 1.0,
+        "confusion_matrix": [
+          [
+            153,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            175,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            119,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            61,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            59,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            33
+          ]
+        ],
+        "per_class": {
+          "forest_fire": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 153
+          },
+          "agricultural_burning": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 175
+          },
+          "industrial_fire": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 119
+          },
+          "gas_oil_flare": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 61
+          },
+          "urban_other": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 59
+          },
+          "unknown": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 33
+          }
+        }
+      }
+    },
+    "event_aware": {
+      "metadata": {
+        "method": "event_aware_group_kfold",
+        "unique_events_total": 1000,
+        "unique_events_train": 800,
+        "unique_events_test": 200
+      },
+      "train_samples": 2400,
+      "test_samples": 600,
+      "metrics": {
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "macro_precision": 1.0,
+        "macro_recall": 1.0,
+        "confusion_matrix": [
+          [
+            156,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            174,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            134,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            55,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            56,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            25
+          ]
+        ],
+        "per_class": {
+          "forest_fire": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 156
+          },
+          "agricultural_burning": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 174
+          },
+          "industrial_fire": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 134
+          },
+          "gas_oil_flare": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 55
+          },
+          "urban_other": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 56
+          },
+          "unknown": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 25
+          }
+        }
+      }
+    },
+    "spatial_holdout": {
+      "metadata": {
+        "method": "spatial_holdout_longitude_split",
+        "longitude_threshold": 76.37162720613027,
+        "train_spatial_bbox": "lon < 76.372",
+        "test_spatial_bbox": "lon >= 76.372"
+      },
+      "train_samples": 1500,
+      "test_samples": 1500,
+      "metrics": {
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "macro_precision": 1.0,
+        "macro_recall": 1.0,
+        "confusion_matrix": [
+          [
+            460,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            508,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            125,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            110,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            185,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            112
+          ]
+        ],
+        "per_class": {
+          "forest_fire": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 460
+          },
+          "agricultural_burning": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 508
+          },
+          "industrial_fire": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 125
+          },
+          "gas_oil_flare": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 110
+          },
+          "urban_other": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 185
+          },
+          "unknown": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 112
+          }
+        }
+      }
+    },
+    "temporal_holdout": {
+      "metadata": {
+        "method": "temporal_holdout",
+        "train_count": 2400,
+        "test_count": 600
+      },
+      "train_samples": 2400,
+      "test_samples": 600,
+      "metrics": {
+        "accuracy": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "macro_precision": 1.0,
+        "macro_recall": 1.0,
+        "confusion_matrix": [
+          [
+            161,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            154,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            127,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            70,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            56,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            32
+          ]
+        ],
+        "per_class": {
+          "forest_fire": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 161
+          },
+          "agricultural_burning": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 154
+          },
+          "industrial_fire": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 127
+          },
+          "gas_oil_flare": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 70
+          },
+          "urban_other": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 56
+          },
+          "unknown": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1_score": 1.0,
+            "support": 32
+          }
+        }
+      }
+    }
+  },
+  "model_comparison": {
+    "random_forest_baseline": {
+      "accuracy": 1.0,
+      "macro_f1": 1.0,
+      "weighted_f1": 1.0,
+      "macro_precision": 1.0,
+      "macro_recall": 1.0,
+      "confusion_matrix": [
+        [
+          156,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          174,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          134,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          55,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          56,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          25
+        ]
+      ],
+      "per_class": {
+        "forest_fire": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 156
+        },
+        "agricultural_burning": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 174
+        },
+        "industrial_fire": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 134
+        },
+        "gas_oil_flare": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 55
+        },
+        "urban_other": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 56
+        },
+        "unknown": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 25
+        }
+      }
+    },
+    "xgboost_benchmark": {
+      "accuracy": 1.0,
+      "macro_f1": 1.0,
+      "weighted_f1": 1.0,
+      "macro_precision": 1.0,
+      "macro_recall": 1.0,
+      "confusion_matrix": [
+        [
+          156,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          174,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          134,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          55,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          56,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          25
+        ]
+      ],
+      "per_class": {
+        "forest_fire": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 156
+        },
+        "agricultural_burning": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 174
+        },
+        "industrial_fire": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 134
+        },
+        "gas_oil_flare": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 55
+        },
+        "urban_other": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 56
+        },
+        "unknown": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 25
+        }
+      }
+    },
+    "lightgbm_primary": {
+      "accuracy": 0.9983,
+      "macro_f1": 0.9979,
+      "weighted_f1": 0.9983,
+      "macro_precision": 0.9988,
+      "macro_recall": 0.997,
+      "confusion_matrix": [
+        [
+          156,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          174,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          134,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          54,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          56,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          25
+        ]
+      ],
+      "per_class": {
+        "forest_fire": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 156
+        },
+        "agricultural_burning": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 174
+        },
+        "industrial_fire": {
+          "precision": 0.9926,
+          "recall": 1.0,
+          "f1_score": 0.9963,
+          "support": 134
+        },
+        "gas_oil_flare": {
+          "precision": 1.0,
+          "recall": 0.9818,
+          "f1_score": 0.9908,
+          "support": 55
+        },
+        "urban_other": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 56
+        },
+        "unknown": {
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1_score": 1.0,
+          "support": 25
+        }
+      }
+    }
+  },
+  "top_feature_importances": {
+    "residential_fraction": 321.0,
+    "farmland_fraction": 235.0,
+    "industrial_fraction": 199.0,
+    "nearest_gas_facility_m": 199.0,
+    "forest_fraction": 187.0,
+    "nearest_factory_m": 151.0,
+    "humidity_pct": 138.0,
+    "gas_facilities_within_1km": 112.0,
+    "building_count": 105.0,
+    "brightness_k": 88.0,
+    "bright_ti4": 87.0,
+    "frp_latest_mw": 67.0,
+    "frp_max_mw": 58.0,
+    "vpd_anomaly_kpa": 45.0,
+    "factories_within_1km": 43.0,
+    "thermal_contrast_k": 29.0,
+    "frp_mean_mw": 27.0,
+    "temperature_anomaly_c": 24.0,
+    "duration_hours": 22.0,
+    "bright_ti5": 21.0,
+    "temperature_c": 19.0,
+    "inside_industrial": 10.0,
+    "wind_speed_ms": 9.0,
+    "detection_confidence_pct": 3.0,
+    "scan": 0.0,
+    "track": 0.0,
+    "detection_count": 0.0,
+    "day_night_numeric": 0.0,
+    "hour_of_day": 0.0,
+    "month": 0.0,
+    "water_fraction": 0.0,
+    "power_infra_within_1km": 0.0
+  },
+  "dataset_provenance": "Trained strictly on geofenced Indian thermal observations (Lat 6.5-37.5, Lon 68.0-97.5) with NASA FIRMS VIIRS thermal properties, OpenStreetMap infrastructure proximity, and ERA5 weather anomalies.",
+  "is_prototype_model": true
+}

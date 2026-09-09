@@ -43,8 +43,10 @@ from app.services.classifier.feature_vector import build_feature_vector
 from app.services.classifier.scorer import classify, suggested_action
 from app.services.classifier.validity import assess_validity
 from app.services.impact_service import assess_impact
+from app.services.classifier.lightgbm_service import predict_thermal_source
 from app.services.osm import client as overpass
 from app.services.osm.features import SurroundingsFeatures, extract_features
+from app.services.persistence.persistence_service import evaluate_persistence
 
 logger = logging.getLogger(__name__)
 
@@ -223,39 +225,30 @@ async def persist_weather(
 async def classify_event(
     db: AsyncSession, event: FireEvent, surroundings_dict: Optional[Dict[str, Any]]
 ) -> Dict[str, Any]:
-    """Build the feature vector, score it, and assess impact.
+    """Execute GeoFlare Workflow: 7-Day Persistence check followed by LightGBM.
 
-    Runs whatever the state of enrichment: a fire with no OSM and no weather
-    still gets a prediction, it just scores as `unknown` with the confidence
-    penalty its thin inputs deserve.
+    If the thermal source IS persistent (>= 5 active days / 7 within 500m):
+        -> classify as "persistent_thermal_source"
+        -> DO NOT call LightGBM
+        -> DO NOT generate an ML source classification
+
+    If the thermal source is NOT persistent:
+        -> extract canonical ML features
+        -> run LightGBM multiclass model (.predict_proba)
+        -> calculate 6 source probabilities and select top category
+        -> evaluate beta severity and alert triggers
     """
-    features = await build_feature_vector(db, event, surroundings_dict)
+    # 1. 7-Day Persistence Check (BEFORE LightGBM)
+    peval = await evaluate_persistence(db, event)
 
-    # Validity FIRST: whether this is a fire at all is a different question
-    # from what kind of fire it is, and asking them in the wrong order is how
-    # a dashboard ends up confidently naming the cause of a sun glint.
+    features = await build_feature_vector(db, event, surroundings_dict)
+    features["is_persistent"] = peval.is_persistent
+    features["active_days_7d"] = peval.active_days
+
+    # Validity assessment
     validity = assess_validity(features)
     features["validity_verdict"] = validity.verdict
     features["validity_p_real"] = round(validity.p_real, 4)
-
-    # First pass to get a class, then impact, then re-score so exposure can
-    # escalate severity.
-    provisional = classify(features)
-    impact = assess_impact(provisional.prediction, provisional.severity, features)
-    prediction = classify(features, exposure_count=impact["exposure_count"])
-    impact["severity"] = prediction.severity
-    impact["risk_level"] = assess_impact(
-        prediction.prediction, prediction.severity, features
-    )["risk_level"]
-
-    action = suggested_action(prediction.prediction, prediction.severity, features)
-    if not validity.is_assessable:
-        # A detection we believe is probably not a fire must not be handed a
-        # confident source label or a dispatch instruction.
-        action = (
-            "VERIFY DETECTION: this thermal anomaly is more likely a sensor artefact or a "
-            "permanent heat source than a fire. Source classification is shown for reference only."
-        )
 
     await db.execute(
         text("DELETE FROM fire_predictions WHERE fire_event_id = :eid"), {"eid": event.id}
@@ -264,27 +257,51 @@ async def classify_event(
         text("DELETE FROM impact_assessments WHERE fire_event_id = :eid"), {"eid": event.id}
     )
 
-    probabilities = prediction.probabilities
-    db.add(
-        FirePrediction(
+    if peval.is_persistent:
+        # PERSISTENT THERMAL SOURCE: Skip LightGBM entirely
+        logger.info(
+            "Event %s: persistence=%d/7, persistent=true -> LightGBM skipped",
+            event.id,
+            peval.active_days,
+        )
+        action = (
+            f"MONITORING: Persistent Thermal Source confirmed ({peval.active_days}/7 active days in past week within 500m). "
+            "Consistent with permanent flare stack, kiln, or industrial furnace. Emergency dispatch suppressed."
+        )
+        reasoning_steps = [
+            {
+                "step_index": 1,
+                "label": "7-Day Persistence Engine Check",
+                "detail": peval.reason,
+                "status": "warning",
+            },
+            {
+                "step_index": 2,
+                "label": "ML Classification Engine Status",
+                "detail": "LightGBM source classifier skipped by architecture rule: source is a confirmed persistent thermal emitter.",
+                "status": "passed",
+            },
+        ]
+
+        prediction_record = FirePrediction(
             fire_event_id=event.id,
-            predicted_class=prediction.prediction,
-            confidence=prediction.confidence,
-            confidence_pct=prediction.confidence_pct,
-            industrial_probability=probabilities["industrial"],
-            flare_probability=probabilities["flare"],
-            forest_probability=probabilities["forest"],
-            agriculture_probability=probabilities["agriculture"],
-            gas_oil_probability=probabilities["gas_oil"],
-            urban_probability=probabilities["urban"],
-            unknown_probability=probabilities["unknown"],
-            severity=prediction.severity,
-            model_version=prediction.model_version,
-            model_kind=prediction.model_kind,
-            data_quality=prediction.data_quality,
-            reasoning_steps=prediction.reasoning_steps,
-            # Persisted from day one: OSM and weather drift, so without this
-            # Phase 8 could never reconstruct a historical prediction's inputs.
+            predicted_class="persistent_thermal_source",
+            confidence=1.0,
+            confidence_pct=100,
+            forest_probability=0.0,
+            agriculture_probability=0.0,
+            industrial_probability=0.0,
+            gas_oil_probability=0.0,
+            urban_probability=0.0,
+            unknown_probability=0.0,
+            flare_probability=1.0,
+            is_persistent=True,
+            active_days_7d=peval.active_days,
+            severity="LOW",
+            model_version="persistence_engine_v1",
+            model_kind="persistence_pre_filter",
+            data_quality=1.0,
+            reasoning_steps=reasoning_steps,
             feature_snapshot=features,
             suggested_action=action,
             validity_verdict=validity.verdict,
@@ -293,7 +310,82 @@ async def classify_event(
             validity_concerns=validity.concerns,
             validity_steps=validity.reasoning_steps,
         )
+        db.add(prediction_record)
+
+        impact = assess_impact("flare", "LOW", features)
+        db.add(
+            ImpactAssessment(
+                fire_event_id=event.id,
+                risk_level="LOW",
+                core_radius_m=impact["core_radius_m"],
+                downwind_length_m=impact["downwind_length_m"],
+                wind_speed_ms=impact["wind_speed_ms"],
+                wind_direction_deg=impact["wind_direction_deg"],
+                plume_bearing_deg=impact["plume_bearing_deg"],
+                exposed=impact["exposed"],
+                exposure_count=0,
+                potential_pollutants=impact["potential_pollutants"],
+                risk_zones=impact["risk_zones"],
+                notes=["Persistent thermal source: standard emissions profile."],
+            )
+        )
+
+        return {
+            "prediction": prediction_record,
+            "impact": impact,
+            "features": features,
+            "validity": validity,
+            "is_persistent": True,
+            "active_days": peval.active_days,
+        }
+
+    # NON-PERSISTENT SOURCE: Run LightGBM Multiclass Model
+    logger.info(
+        "Event %s: persistence=%d/7, persistent=false -> LightGBM executed",
+        event.id,
+        peval.active_days,
     )
+
+    # Calculate initial impact for exposure count
+    impact = assess_impact("industrial", "MEDIUM", features)
+    exposure_count = impact.get("exposure_count", 0)
+
+    # Execute LightGBM inference
+    ml_result = predict_thermal_source(features, exposure_count=exposure_count)
+
+    # Recompute impact with predicted class and severity
+    impact = assess_impact(ml_result.predicted_class, ml_result.severity, features)
+
+    probs = ml_result.probabilities
+    prediction_record = FirePrediction(
+        fire_event_id=event.id,
+        predicted_class=ml_result.predicted_class,
+        confidence=ml_result.predicted_probability,
+        confidence_pct=ml_result.confidence_pct,
+        forest_probability=probs.get("forest_fire", 0.0),
+        agriculture_probability=probs.get("agricultural_burning", 0.0),
+        industrial_probability=probs.get("industrial_fire", 0.0),
+        gas_oil_probability=probs.get("gas_oil_flare", 0.0),
+        urban_probability=probs.get("urban_other", 0.0),
+        unknown_probability=probs.get("unknown", 0.0),
+        flare_probability=probs.get("gas_oil_flare", 0.0),
+        is_persistent=False,
+        active_days_7d=peval.active_days,
+        severity=ml_result.severity,
+        model_version=ml_result.model_version,
+        model_kind=ml_result.model_kind,
+        data_quality=ml_result.data_quality,
+        reasoning_steps=ml_result.reasoning_steps,
+        feature_snapshot=features,
+        suggested_action=ml_result.suggested_action,
+        validity_verdict=validity.verdict,
+        validity_p_real=validity.p_real,
+        validity_model_version=validity.model_version,
+        validity_concerns=validity.concerns,
+        validity_steps=validity.reasoning_steps,
+    )
+    db.add(prediction_record)
+
     db.add(
         ImpactAssessment(
             fire_event_id=event.id,
@@ -310,7 +402,16 @@ async def classify_event(
             notes=impact["notes"],
         )
     )
-    return {"prediction": prediction, "impact": impact, "features": features, "validity": validity}
+
+    return {
+        "prediction": prediction_record,
+        "impact": impact,
+        "features": features,
+        "validity": validity,
+        "is_persistent": False,
+        "active_days": peval.active_days,
+    }
+
 
 
 async def apply_enrichment(
