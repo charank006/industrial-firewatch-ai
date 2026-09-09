@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
@@ -10,22 +10,65 @@ import {
 import { ReasoningFlow } from '../../components/intelligence/ReasoningFlow';
 import { GISMapLibre } from '../../components/map/GISMapLibre';
 import { useIntelligence } from '../../context/IntelligenceContext';
-
-const HISTORICAL_FRP_DATA = [
-  { time: 'Jul 01', frp: 15.2, baseline: 15.0 },
-  { time: 'Jul 15', frp: 14.8, baseline: 15.0 },
-  { time: 'Aug 01', frp: 16.1, baseline: 15.0 },
-  { time: 'Aug 15', frp: 15.4, baseline: 15.0 },
-  { time: 'Aug 26', frp: 15.0, baseline: 15.0 },
-  { time: 'Today 21:42', frp: 184.6, baseline: 15.0 },
-];
+import { fetchFireDetections } from '../../services/api';
 
 export const IncidentDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { hotspots, selectFacilityById } = useIntelligence();
+  const { hotspots, selectFacilityById, isLoading } = useIntelligence();
 
+  // `hotspots[0]` is undefined on the first render in api mode, and every
+  // `incident.<field>` below then threw - blanking the whole app tree, not
+  // just this page.
   const incident = hotspots.find((h) => h.id === id) || hotspots[0];
+
+  /**
+   * The FRP series this chart plots.
+   *
+   * It was a six-point invention ending "Today 21:42, 184.6 MW", printed
+   * identically for every incident regardless of which one was open. These
+   * are the event's own satellite passes, and the baseline is its own mean
+   * FRP rather than a round number chosen to make the spike look dramatic.
+   */
+  const [series, setSeries] = useState<
+    Array<{ time: string; frp: number; baseline: number }> | null
+  >(null);
+
+  useEffect(() => {
+    if (!incident?.id) return;
+    let cancelled = false;
+
+    fetchFireDetections(incident.id)
+      .then((data) => {
+        if (cancelled || !data?.detections?.length) return;
+        const mean =
+          data.detections.reduce((total, d) => total + d.frp_mw, 0) / data.detections.length;
+        setSeries(
+          data.detections.map((d) => ({
+            time: d.time_formatted || d.acquisition_time.slice(11, 16),
+            frp: Number(d.frp_mw.toFixed(1)),
+            baseline: Number(mean.toFixed(1)),
+          })),
+        );
+      })
+      .catch(() => {
+        // A missing series is an expected state; the panel says so rather
+        // than falling back to invented numbers.
+        if (!cancelled) setSeries(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [incident?.id]);
+
+  if (!incident) {
+    return (
+      <div className="min-h-screen bg-[#050A12] p-6 font-mono text-xs text-[#A7B4C5]">
+        {isLoading ? 'Loading detections…' : `No detection ${id ?? ''} in the current view.`}
+      </div>
+    );
+  }
 
   const handleFacilityClick = () => {
     selectFacilityById(incident.nearestFacilityId);
@@ -80,8 +123,14 @@ export const IncidentDetailsPage: React.FC = () => {
             </div>
 
             <div className="h-48 w-full pt-2">
+              {series === null ? (
+                <div className="h-full flex items-center justify-center text-[11px] font-mono text-[#66768A] text-center px-6">
+                  No detection series for this event yet. It is plotted from the event's own
+                  satellite passes, so a single-pass detection has nothing to chart.
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={HISTORICAL_FRP_DATA}>
+                <LineChart data={series}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#203246" />
                   <XAxis dataKey="time" stroke="#66768A" fontSize={10} />
                   <YAxis stroke="#66768A" fontSize={10} />
@@ -92,6 +141,7 @@ export const IncidentDetailsPage: React.FC = () => {
                   <Line type="monotone" dataKey="baseline" stroke="#16A9D9" strokeDasharray="5 5" strokeWidth={1.5} />
                 </LineChart>
               </ResponsiveContainer>
+              )}
             </div>
           </div>
         </div>
@@ -140,7 +190,7 @@ export const IncidentDetailsPage: React.FC = () => {
               steps={incident.reasoningSteps}
               classification={incident.classification}
               confidence={incident.confidence}
-            />
+              severity={incident.severity}/>
           </div>
 
           <div className="bg-[#07101B] border border-[#FF3B30]/30 rounded-xl p-5 space-y-3 font-mono text-xs">

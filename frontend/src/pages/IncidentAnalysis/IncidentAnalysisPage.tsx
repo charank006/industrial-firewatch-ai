@@ -168,7 +168,7 @@ export const IncidentAnalysisPage: React.FC = () => {
               steps={incident.reasoningSteps}
               classification={incident.classification}
               confidence={incident.confidence}
-            />
+              severity={incident.severity}/>
           </div>
         </div>
 
