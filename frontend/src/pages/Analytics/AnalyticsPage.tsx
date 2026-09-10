@@ -14,23 +14,41 @@ import {
 import { BarChart3, TrendingUp } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 
-const DAILY_TREND = [
-  { date: 'Aug 22', detections: 2, avgFrp: 45.2 },
-  { date: 'Aug 23', detections: 4, avgFrp: 88.0 },
-  { date: 'Aug 24', detections: 3, avgFrp: 62.5 },
-  { date: 'Aug 25', detections: 5, avgFrp: 110.2 },
-  { date: 'Aug 26', detections: 2, avgFrp: 38.0 },
-  { date: 'Aug 27', detections: 7, avgFrp: 142.6 },
-];
-
-const SEVERITY_DISTRIBUTION = [
-  { name: 'High Severity', value: 3, color: '#F04438' },
-  { name: 'Medium Severity', value: 3, color: '#E8A93A' },
-  { name: 'Low Severity', value: 1, color: '#39B978' },
-];
-
 export const AnalyticsPage: React.FC = () => {
-  const { metrics } = useIntelligence();
+  const { metrics, hotspots, facilities } = useIntelligence();
+
+  const dailyTrend = React.useMemo(() => {
+    if (!hotspots || hotspots.length === 0) return [];
+    const dateMap = new Map<string, { count: number; totalFrp: number }>();
+    hotspots.forEach((h) => {
+      const d = h.timestamp ? h.timestamp.slice(5, 10) : 'Recent';
+      const cur = dateMap.get(d) || { count: 0, totalFrp: 0 };
+      cur.count += h.detectionCount || 1;
+      cur.totalFrp += h.frpMw;
+      dateMap.set(d, cur);
+    });
+    return Array.from(dateMap.entries()).map(([date, val]) => ({
+      date,
+      detections: val.count,
+      avgFrp: Number((val.totalFrp / (val.count || 1)).toFixed(1)),
+    }));
+  }, [hotspots]);
+
+  const severityDistribution = React.useMemo(() => {
+    const high = hotspots.filter((h) => h.severity === 'HIGH' || h.severity === 'CRITICAL').length;
+    const med = hotspots.filter((h) => h.severity === 'MEDIUM').length;
+    const low = hotspots.filter((h) => h.severity === 'LOW').length;
+    return [
+      { name: 'High / Critical', value: high, color: '#F04438' },
+      { name: 'Medium Severity', value: med, color: '#E8A93A' },
+      { name: 'Low Severity', value: low, color: '#39B978' },
+    ];
+  }, [hotspots]);
+
+  const highPriorityPct =
+    metrics.totalDetected > 0
+      ? ((metrics.highPriorityCount / metrics.totalDetected) * 100).toFixed(1)
+      : '0';
 
   return (
     <div className="min-h-screen bg-[#05080D] p-4 sm:p-6 space-y-6 font-sans text-[#F1F4F6]">
@@ -49,7 +67,7 @@ export const AnalyticsPage: React.FC = () => {
         </div>
 
         <div className="text-xs text-[#3DB7D9] bg-[#081019] px-3 py-1.5 border border-[#253340] rounded">
-          DEMO ANALYTICS WINDOW (LAST 30 DAYS)
+          ACTIVE AOI SATELLITE WINDOW
         </div>
       </div>
 
@@ -59,14 +77,14 @@ export const AnalyticsPage: React.FC = () => {
           <span className="text-[10px] text-[#A7B4C1] uppercase block">TOTAL DETECTIONS</span>
           <span className="text-2xl font-bold text-[#3DB7D9]">{metrics.totalDetected}</span>
           <span className="text-[10px] text-[#39B978] flex items-center mt-1">
-            <TrendingUp className="w-3 h-3 mr-1" /> +14.2% vs prev 30d
+            <TrendingUp className="w-3 h-3 mr-1" /> Active Tracking
           </span>
         </div>
 
         <div className="p-4 bg-[#081019] border border-[#253340] rounded-lg">
           <span className="text-[10px] text-[#F04438] uppercase font-semibold block">HIGH PRIORITY</span>
           <span className="text-2xl font-bold text-[#F04438]">{metrics.highPriorityCount}</span>
-          <span className="text-[10px] text-[#A7B4C1] block mt-1">42.8% of total</span>
+          <span className="text-[10px] text-[#A7B4C1] block mt-1">{highPriorityPct}% of total</span>
         </div>
 
         <div className="p-4 bg-[#081019] border border-[#253340] rounded-lg">
@@ -77,8 +95,8 @@ export const AnalyticsPage: React.FC = () => {
 
         <div className="p-4 bg-[#081019] border border-[#253340] rounded-lg">
           <span className="text-[10px] text-[#A7B4C1] uppercase block">MONITORED ASSETS</span>
-          <span className="text-2xl font-bold text-white">06</span>
-          <span className="text-[10px] text-[#39B978] block mt-1">Gujarat Sector</span>
+          <span className="text-2xl font-bold text-white">{facilities.length}</span>
+          <span className="text-[10px] text-[#39B978] block mt-1">Industrial Facilities</span>
         </div>
       </div>
 
@@ -90,12 +108,12 @@ export const AnalyticsPage: React.FC = () => {
             <span className="font-semibold text-[#3DB7D9] uppercase tracking-wider">
               DAILY DETECTION VOLUME & MEAN FRP (MW)
             </span>
-            <span className="text-[10px] text-[#A7B4C1]">30-DAY WINDOW</span>
+            <span className="text-[10px] text-[#A7B4C1]">VIIRS/MODIS SENSORS</span>
           </div>
 
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={DAILY_TREND}>
+              <LineChart data={dailyTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#253340" />
                 <XAxis dataKey="date" stroke="#6F7E8D" fontSize={11} />
                 <YAxis stroke="#6F7E8D" fontSize={11} />
@@ -113,14 +131,14 @@ export const AnalyticsPage: React.FC = () => {
             <span className="font-semibold text-white uppercase tracking-wider">
               SEVERITY DISTRIBUTION
             </span>
-            <span className="text-[10px] text-[#A7B4C1]">VIIRS SCORE</span>
+            <span className="text-[10px] text-[#A7B4C1]">LIVE CLASSIFICATIONS</span>
           </div>
 
           <div className="h-64 w-full flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={SEVERITY_DISTRIBUTION} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={35}>
-                  {SEVERITY_DISTRIBUTION.map((entry, index) => (
+                <Pie data={severityDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} innerRadius={35}>
+                  {severityDistribution.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>

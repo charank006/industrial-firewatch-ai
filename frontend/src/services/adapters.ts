@@ -86,12 +86,24 @@ export function adaptReasoningStep(step: ApiReasoningStep): ReasoningStep {
 
 export function adaptFireEvent(event: ApiFireEvent): ThermalHotspot {
   const timestamp = event.last_detected ?? new Date().toISOString();
+  const landCover = oneOf(LAND_COVER_VALUES, event.land_cover, 'Unclassified');
+  const baselineFrp =
+    landCover === 'Dense Forest'
+      ? 0.5
+      : landCover === 'Cropland'
+      ? 1.0
+      : landCover === 'Built-up Industrial'
+      ? 10.0
+      : landCover === 'Scrubland'
+      ? 1.5
+      : 1.5;
 
   return {
     id: event.fire_event_id,
     lat: event.latitude,
     lng: event.longitude,
     frpMw: event.frp_latest_mw,
+    baselineFrp,
     brightnessK: event.brightness_k ?? 0,
     // `confidence` means CLASSIFICATION confidence - which is what every
     // component labels it. Until Phase 5 there is none, so it reads 0 rather
@@ -102,7 +114,7 @@ export function adaptFireEvent(event: ApiFireEvent): ThermalHotspot {
     timestamp,
     timeFormatted: event.time_formatted ?? '',
     dayNight: event.day_night === 'N' ? 'N' : 'D',
-    landCover: oneOf(LAND_COVER_VALUES, event.land_cover, 'Unclassified'),
+    landCover,
     facilityDistanceKm: event.nearest_facility_distance_km ?? 0,
     nearestFacilityId: event.nearest_facility_id ?? '',
     nearestFacilityName: event.nearest_facility_name ?? 'Unassigned',

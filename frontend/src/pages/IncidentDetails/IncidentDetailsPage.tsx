@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -59,20 +59,6 @@ export const IncidentDetailsPage: React.FC = () => {
     };
   }, [incident?.id]);
 
-  /**
-   * The plotted window. The baseline is the mean of whatever is in view.
-   */
-  const series = React.useMemo(() => {
-    if (!rows?.length) return null;
-    const spans: Record<string, number> = { '24h': 24, '7d': 24 * 7, all: Infinity };
-    const cutoff = Date.now() - spans[window] * 3_600_000;
-    const inWindow =
-      window === 'all' ? rows : rows.filter((r) => new Date(r.at).getTime() >= cutoff);
-    if (!inWindow.length) return [];
-    const mean = inWindow.reduce((t, r) => t + r.frp, 0) / inWindow.length;
-    return inWindow.map((r) => ({ ...r, baseline: Number(mean.toFixed(1)) }));
-  }, [rows, window]);
-
   if (!incident) {
     return (
       <div className="min-h-screen bg-[#050A12] p-6 font-mono text-xs text-[#A7B4C5]">
@@ -86,31 +72,64 @@ export const IncidentDetailsPage: React.FC = () => {
     navigate(`/facility-watch?facilityId=${incident.nearestFacilityId}`);
   };
 
-  const baselineValue = incident.baselineFrp ?? (
-    incident.classification.toLowerCase().includes('forest')
+  const baselineValue = incident?.baselineFrp ?? (
+    (incident?.classification || '').toLowerCase().includes('forest')
       ? 0.5
-      : incident.classification.toLowerCase().includes('agricultural')
+      : (incident?.classification || '').toLowerCase().includes('agri') || (incident?.classification || '').toLowerCase().includes('crop')
       ? 1.0
-      : 15.0
+      : (incident?.classification || '').toLowerCase().includes('industrial') || (incident?.classification || '').toLowerCase().includes('flare') || (incident?.classification || '').toLowerCase().includes('gas')
+      ? 10.0
+      : 1.5
   );
 
-  // Use dynamic event timeline or compute tailored fallback
-  const timelineData = (incident.frpTimeline && incident.frpTimeline.length > 0)
-    ? incident.frpTimeline
-    : [
-        { time: 'Pass -5', frp: Number((baselineValue * 0.95).toFixed(2)), baseline: baselineValue },
-        { time: 'Pass -4', frp: Number((baselineValue * 1.05).toFixed(2)), baseline: baselineValue },
-        { time: 'Pass -3', frp: Number((baselineValue * 0.98).toFixed(2)), baseline: baselineValue },
-        { time: 'Pass -2', frp: Number((baselineValue * 1.02).toFixed(2)), baseline: baselineValue },
-        { time: 'Pass -1', frp: Number((baselineValue * 1.08).toFixed(2)), baseline: baselineValue },
-        { time: incident.timeFormatted || 'Observation', frp: Number(incident.frpMw.toFixed(1)), baseline: baselineValue },
+  /**
+   * Real baseline vs observed FRP plot.
+   * Compares the satellite-observed FRP against the background land cover baseline.
+   */
+  const chartData = React.useMemo(() => {
+    if (!incident) return [];
+    const baseline = Number(baselineValue.toFixed(1));
+
+    if (rows && rows.length > 0) {
+      const spans: Record<string, number> = { '24h': 24, '7d': 24 * 7, all: Infinity };
+      const latestAt = new Date(rows[rows.length - 1].at).getTime();
+      const cutoff = latestAt - spans[window] * 3_600_000;
+      const inWindow = window === 'all' ? rows : rows.filter((r) => new Date(r.at).getTime() >= cutoff);
+      const activeRows = inWindow.length > 0 ? inWindow : rows;
+
+      return [
+        {
+          time: 'Pre-Fire (Baseline)',
+          frp: baseline,
+          baseline: baseline,
+        },
+        ...activeRows.map((r, idx) => ({
+          time: r.time ? `${r.time}` : `Pass ${idx + 1}`,
+          frp: r.frp,
+          baseline: baseline,
+        })),
       ];
+    }
+
+    const obsTime = incident.timeFormatted || 'Observation';
+    return [
+      {
+        time: 'Pre-Fire (Baseline)',
+        frp: baseline,
+        baseline: baseline,
+      },
+      {
+        time: `${obsTime} (Peak)`,
+        frp: Number(incident.frpMw.toFixed(1)),
+        baseline: baseline,
+      },
+    ];
+  }, [rows, window, incident, baselineValue]);
 
   const elevationRatio = baselineValue > 0
     ? Math.round(((incident.frpMw - baselineValue) / baselineValue) * 100)
     : 0;
 
-  const chartData = series && series.length > 0 ? series : timelineData;
 
   return (
     <div className="min-h-screen bg-[#050A12] p-4 sm:p-6 space-y-6 font-sans text-[#F5F7FA]">
@@ -201,13 +220,17 @@ export const IncidentDetailsPage: React.FC = () => {
                     contentStyle={{ backgroundColor: '#07101B', borderColor: '#203246', color: '#fff', fontSize: '11px' }}
                     formatter={(value: any, name?: any) => [
                       `${Number(value).toFixed(1)} MW`,
-                      name === 'frp' ? 'Observed FRP' : 'Baseline Level'
+                      name === 'frp' || name === 'Observed FRP' ? 'Observed FRP' : 'Land Cover Baseline'
                     ]}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }}
+                    iconType="circle"
                   />
                   <Line
                     type="monotone"
                     dataKey="frp"
-                    name="frp"
+                    name="Observed FRP"
                     stroke="#FFB020"
                     strokeWidth={2.5}
                     dot={{ r: 4, fill: '#FFB020' }}
@@ -216,7 +239,7 @@ export const IncidentDetailsPage: React.FC = () => {
                   <Line
                     type="monotone"
                     dataKey="baseline"
-                    name="baseline"
+                    name="Baseline Level"
                     stroke="#16A9D9"
                     strokeDasharray="5 5"
                     strokeWidth={1.5}
