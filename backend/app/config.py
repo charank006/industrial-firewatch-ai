@@ -1,3 +1,4 @@
+import os
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -22,14 +23,38 @@ class Settings(BaseSettings):
     DEMO_MODE: bool = True
 
     # --- Spatial database (PostgreSQL + PostGIS) -------------------------
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/firewatch_db"
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://neondb_owner:npg_x2vA6lCMtLFE@ep-mute-sea-aevrcmj8.c-2.us-east-2.aws.neon.tech/neondb?ssl=require"
+    )
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def clean_database_url(cls, v: str) -> str:
-        if not v or not isinstance(v, str):
-            return v
-        v = v.strip()
+        candidate = v
+        # If not provided, or default localhost in cloud deployment, inspect environment
+        if not candidate or candidate == "postgresql+asyncpg://postgres:postgres@localhost:5432/firewatch_db":
+            for env_key in (
+                "DATABASE_URL",
+                "POSTGRES_URL",
+                "NEON_DATABASE_URL",
+                "NEON_URL",
+                "DB_URL",
+                "DATABASE_URI",
+                "INTERNAL_DATABASE_URL",
+            ):
+                val = os.getenv(env_key)
+                if val and val.strip() and "localhost:5432" not in val:
+                    candidate = val.strip()
+                    break
+
+        if not candidate or candidate == "postgresql+asyncpg://postgres:postgres@localhost:5432/firewatch_db":
+            if os.getenv("RENDER") or not os.path.exists("/opt/homebrew"):
+                candidate = "postgresql+asyncpg://neondb_owner:npg_x2vA6lCMtLFE@ep-mute-sea-aevrcmj8.c-2.us-east-2.aws.neon.tech/neondb?ssl=require"
+
+        if not candidate:
+            candidate = "postgresql+asyncpg://neondb_owner:npg_x2vA6lCMtLFE@ep-mute-sea-aevrcmj8.c-2.us-east-2.aws.neon.tech/neondb?ssl=require"
+
+        v = str(candidate).strip()
         if v.startswith("DATABASE_URL="):
             v = v[len("DATABASE_URL="):].strip()
         v = v.strip("\"'")
@@ -41,6 +66,8 @@ class Settings(BaseSettings):
         v = v.replace("sslmode=require", "ssl=require")
         v = v.rstrip(".")
         v = v.replace("&channel_binding=require", "")
+        if "-pooler.c-2.us-east-2.aws.neon.tech" in v:
+            v = v.replace("-pooler.c-2.us-east-2.aws.neon.tech", ".c-2.us-east-2.aws.neon.tech")
         return v
 
     # Separate database for tests. The DB fixtures TRUNCATE between tests, so

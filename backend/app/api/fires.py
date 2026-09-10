@@ -145,6 +145,35 @@ async def recurrence_count(db: AsyncSession, event: FireEvent) -> int:
     return int(result.scalar_one())
 
 
+async def batch_recurrence_counts(db: AsyncSession, event_ids: List[str]) -> Dict[str, int]:
+    """Batch compute recurrence counts for a list of events in a single query."""
+    if not event_ids:
+        return {}
+    try:
+        result = await db.execute(
+            text(
+                """
+                SELECT a.id, COUNT(b.id)
+                FROM fire_events a
+                LEFT JOIN fire_events b
+                  ON b.id <> a.id
+                 AND ST_DWithin(a.geometry::geography, b.geometry::geography, :radius_m)
+                WHERE a.id = ANY(:event_ids)
+                GROUP BY a.id
+                """
+            ),
+            {
+                "event_ids": event_ids,
+                "radius_m": settings.EVENT_LINK_RADIUS_M,
+            },
+        )
+        return {row[0]: int(row[1]) for row in result.fetchall()}
+    except Exception as exc:
+        logger.warning("batch_recurrence_counts failed: %s", exc)
+        return {eid: 0 for eid in event_ids}
+
+
+
 def serialise_event(
     event: FireEvent,
     *,
@@ -339,11 +368,13 @@ async def list_fires(
         events = list((await db.execute(query)).scalars())
 
         history_days = await history_window_days(db)
-        predictions = await latest_predictions(db, [e.id for e in events])
+        event_ids = [e.id for e in events]
+        predictions = await latest_predictions(db, event_ids)
+        recurrences = await batch_recurrence_counts(db, event_ids)
         items = [
             serialise_event(
                 event,
-                recurrence=await recurrence_count(db, event),
+                recurrence=recurrences.get(event.id, 0),
                 history_days=history_days,
                 prediction=predictions.get(event.id),
             )

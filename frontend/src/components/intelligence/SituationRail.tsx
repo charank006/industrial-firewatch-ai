@@ -23,9 +23,13 @@ export const SituationRail: React.FC = () => {
     setFilters,
   } = useIntelligence();
 
+  // Agriculture is a confident classification, not a fallback. It needs its own
+  // row here or the catch-all below buries every stubble burn under the label
+  // that means "we could not classify this".
   const DISPLAY_MIX_CLASSES = [
     'Industrial Fire',
     'Forest Fire',
+    'Monitored Farmland Heat',
     'Monitored Heat Point',
   ];
 
@@ -92,10 +96,25 @@ export const SituationRail: React.FC = () => {
                 }).length;
               } else if (label === 'Forest Fire') {
                 count = filteredHotspots.filter((h) => (h.classification || '').toLowerCase().includes('forest')).length;
+              } else if (label === 'Monitored Farmland Heat') {
+                count = filteredHotspots.filter((h) => {
+                  const c = (h.classification || '').toLowerCase();
+                  return c.includes('agri') || c.includes('crop') || c.includes('farm');
+                }).length;
               } else {
                 count = filteredHotspots.filter((h) => {
                   const c = (h.classification || '').toLowerCase();
-                  return !c.includes('industrial') && !c.includes('flare') && !c.includes('gas') && !c.includes('forest');
+                  return (
+                    !c.includes('industrial') &&
+                    !c.includes('flare') &&
+                    !c.includes('gas') &&
+                    !c.includes('oil') &&
+                    !c.includes('mining') &&
+                    !c.includes('forest') &&
+                    !c.includes('agri') &&
+                    !c.includes('crop') &&
+                    !c.includes('farm')
+                  );
                 }).length;
               }
 
@@ -113,7 +132,9 @@ export const SituationRail: React.FC = () => {
                         label === 'Industrial Fire'
                           ? 'bg-red-500'
                           : label === 'Forest Fire'
-                          ? 'bg-orange-500'
+                          ? 'bg-emerald-500'
+                          : label === 'Monitored Farmland Heat'
+                          ? 'bg-amber-500'
                           : 'bg-slate-400'
                       }`}
                       style={{ width: `${pct}%` }}

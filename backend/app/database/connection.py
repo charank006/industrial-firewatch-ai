@@ -30,6 +30,7 @@ def get_engine() -> AsyncEngine:
         connect_args = {}
         if "pooler" in settings.DATABASE_URL or "neon.tech" in settings.DATABASE_URL:
             connect_args["statement_cache_size"] = 0
+            connect_args["server_settings"] = {"search_path": "public"}
 
         _engine = create_async_engine(
             settings.DATABASE_URL,
