@@ -24,11 +24,11 @@ export const MapControls: React.FC<MapControlsProps> = ({
       {/* Control Toggle Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 bg-[#05080E]/90 hover:bg-[#090D17] border border-white/10 rounded-lg text-slate-300 hover:text-white shadow-xl transition flex items-center space-x-1.5 cursor-pointer backdrop-blur-md"
+        className="flex items-center gap-1.5 px-3 py-1 bg-black/50 hover:bg-white/10 border border-white/10 rounded-full text-slate-300 hover:text-white shadow-md transition font-semibold text-[10.5px] cursor-pointer"
         title="Layer & Filter Controls"
       >
-        <SlidersHorizontal className="w-4 h-4 text-cyan-400" />
-        <span className="font-semibold text-[11px]">CONTROLS</span>
+        <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+        <span>CONTROLS</span>
       </button>
 
       {/* Popout Panel */}

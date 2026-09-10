@@ -29,7 +29,7 @@ export const CommandCenterPage: React.FC = () => {
         <GISMapLibre height="h-full" />
       </div>
 
-      {/* 2. TOP MAP TOOLBAR (CENTERED HUD CATEGORY BAR) */}
+      {/* 2. TOP MAP TOOLBAR (UNIFIED HUD CATEGORY BAR & CONTROLS) */}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-2 p-1.5 bg-[#070B14]/95 border border-cyan-500/25 rounded-full backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.7)] pointer-events-auto font-mono text-xs">
         <button
           onClick={() => setFilters((prev) => ({ ...prev, eventType: activeMode === 'Industrial Fire' ? 'ALL' : 'Industrial Fire' }))}
@@ -90,11 +90,12 @@ export const CommandCenterPage: React.FC = () => {
             {hotspots.length}
           </span>
         </button>
-      </div>
 
-      {/* 2b. FLOATING MAP CONTROLS (POSITIONED NEXT TO RIGHT DRAWER) */}
-      <div className="absolute top-3 right-[23rem] sm:right-[24rem] xl:right-[25rem] z-30 hidden md:block pointer-events-auto">
-        <MapControls className="relative" />
+        {/* Separator Divider */}
+        <div className="h-4 w-[1px] bg-white/20 mx-0.5" />
+
+        {/* Seamlessly Integrated Map Controls */}
+        <MapControls className="relative top-0 right-0" />
       </div>
 
       {/* 3. LEFT PANEL: SITUATION RAIL & ACTIVE ANOMALY QUEUE */}

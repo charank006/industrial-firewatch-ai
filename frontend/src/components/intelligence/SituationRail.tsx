@@ -2,6 +2,17 @@ import React from 'react';
 import { Activity } from 'lucide-react';
 import { useIntelligence } from '../../context/IntelligenceContext';
 
+export const formatIstTime = (timestamp?: string | number | Date): string => {
+  if (!timestamp) return '11:21 IST';
+  try {
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return '11:21 IST';
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }) + ' IST';
+  } catch {
+    return '11:21 IST';
+  }
+};
+
 export const formatDisplayClassification = (cls: string): string => {
   const norm = (cls || '').toLowerCase();
   if (norm.includes('agri') || norm.includes('crop') || norm.includes('farm')) return 'Monitored Farmland Heat';
@@ -162,15 +173,20 @@ export const SituationRail: React.FC = () => {
                   >
                     <div className="flex items-center justify-between text-xs font-bold font-mono">
                       <span className="text-white tracking-wide">{hotspot.id}</span>
-                      <span
-                        className={`text-[9.5px] px-2 py-0.5 rounded font-mono font-bold ${
-                          isRedZone
-                            ? 'bg-red-500/20 text-red-400 border border-red-500/40'
-                            : 'bg-[#1E2B3A] text-cyan-300 border border-[#2B3E52]'
-                        }`}
-                      >
-                        RISK {riskVal.toFixed(1)}%
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-500/30">
+                          CONF {hotspot.confidence ?? 85}%
+                        </span>
+                        <span
+                          className={`text-[9.5px] px-2 py-0.5 rounded font-mono font-bold ${
+                            isRedZone
+                              ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                              : 'bg-[#1E2B3A] text-cyan-300 border border-[#2B3E52]'
+                          }`}
+                        >
+                          RISK {Math.round(riskVal)}%
+                        </span>
+                      </div>
                     </div>
 
                     <div className="text-xs font-bold text-white truncate font-sans tracking-tight">
@@ -179,7 +195,7 @@ export const SituationRail: React.FC = () => {
 
                     <div className="flex justify-between items-center text-[10.5px] text-slate-400 mt-0.5 font-mono">
                       <span>FRP: <strong className="text-white">{hotspot.frpMw.toFixed(2)} MW</strong></span>
-                      <span className="text-slate-400">{hotspot.timeFormatted || '21:11 IST'}</span>
+                      <span className="text-slate-400">{hotspot.timeFormatted || formatIstTime(hotspot.timestamp)}</span>
                     </div>
                   </div>
                 );

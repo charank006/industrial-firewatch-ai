@@ -145,8 +145,18 @@ export const IntelligenceDrawer: React.FC = () => {
             </div>
 
             <div className="p-2 bg-black/40 border border-white/5 rounded-lg space-y-0.5">
-              <span className="text-[9px] text-slate-400 block uppercase">SENSOR CONFIDENCE</span>
-              <span className="font-bold text-emerald-400">{currentIncident.confidence || 97}%</span>
+              <span className="text-[9px] text-slate-400 block uppercase" title="NASA Satellite Hardware Thermal Quality">SENSOR CONF (VIIRS)</span>
+              <span className="font-bold text-emerald-400">{currentIncident.confidence || 85}%</span>
+            </div>
+
+            <div className="p-2 bg-black/40 border border-white/5 rounded-lg space-y-0.5">
+              <span className="text-[9px] text-slate-400 block uppercase" title="Machine Learning Classification Certainty">ML CONF (MODEL)</span>
+              <span className="font-bold text-cyan-400">{currentIncident.mlConfidenceRate ?? Math.round(probVal * 100)}%</span>
+            </div>
+
+            <div className="p-2 bg-black/40 border border-white/5 rounded-lg space-y-0.5">
+              <span className="text-[9px] text-slate-400 block uppercase">RISK SCORE</span>
+              <span className="font-bold text-red-400">{Math.round(currentIncident.riskScore ?? (currentIncident.severity === 'CRITICAL' ? 85 : currentIncident.severity === 'HIGH' ? 65 : 25))}%</span>
             </div>
 
             <div className="p-2 bg-black/40 border border-white/5 rounded-lg space-y-0.5">

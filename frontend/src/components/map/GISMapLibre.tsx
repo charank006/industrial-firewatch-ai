@@ -36,10 +36,12 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     selectedFacility,
     setSelectedIncident,
     setSelectedFacility,
+    selectIncidentById,
     setIsDrawerOpen,
     isDrawerOpen,
     layers,
     mapMode,
+    userSelectionToken,
   } = useIntelligence();
 
   const [styleReady, setStyleReady] = useState(false);
@@ -213,7 +215,7 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         ],
       },
       center: initialCenter,
-      zoom: selectedIncidentRef.current ? 9.5 : initialZoom,
+      zoom: initialZoom,
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-left');
@@ -353,8 +355,14 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
         if (properties && properties.id) {
           const found = filteredHotspotsRef.current.find((h) => h.id === properties.id);
           if (found) {
-            setSelectedIncident(found);
-            setIsDrawerOpen(true);
+            selectIncidentById(properties.id);
+            map.flyTo({
+              center: [found.lng, found.lat],
+              zoom: 13.5,
+              pitch: 25,
+              duration: 1200,
+              essential: true,
+            });
           }
         }
       });
@@ -446,40 +454,53 @@ export const GISMapLibre: React.FC<{ height?: string }> = ({ height = 'h-full' }
     const map = mapRef.current;
     if (!map) return;
 
-    if (selectedIncident) {
+    if (selectedIncident && userSelectionToken > 0) {
       const executeFly = () => {
-        map.flyTo({
-          center: [selectedIncident.lng, selectedIncident.lat],
-          zoom: 11.5,
-          pitch: 25,
-          duration: 1400,
-          essential: true,
-        });
-        showIncidentPopup(selectedIncident);
+        if (!map || !selectedIncident) return;
+        if (typeof selectedIncident.lng !== 'number' || typeof selectedIncident.lat !== 'number') return;
+        try {
+          map.flyTo({
+            center: [selectedIncident.lng, selectedIncident.lat],
+            zoom: 13.5,
+            pitch: 25,
+            duration: 1200,
+            essential: true,
+          });
+          showIncidentPopup(selectedIncident);
+        } catch {
+          // Ignore transient map flyTo errors
+        }
       };
 
-      if (map.isStyleLoaded()) {
+      if (map.isStyleLoaded() || styleReady) {
         executeFly();
       } else {
         map.once('load', executeFly);
+        setTimeout(executeFly, 200);
       }
-    } else if (selectedFacility) {
+    } else if (selectedFacility && userSelectionToken > 0) {
       const executeFlyFac = () => {
-        map.flyTo({
-          center: [selectedFacility.lng, selectedFacility.lat],
-          zoom: 9.5,
-          duration: 1200,
-          essential: true,
-        });
+        if (!map || !selectedFacility) return;
+        try {
+          map.flyTo({
+            center: [selectedFacility.lng, selectedFacility.lat],
+            zoom: 9.5,
+            duration: 1200,
+            essential: true,
+          });
+        } catch {
+          // Ignore
+        }
       };
 
-      if (map.isStyleLoaded()) {
+      if (map.isStyleLoaded() || styleReady) {
         executeFlyFac();
       } else {
         map.once('load', executeFlyFac);
+        setTimeout(executeFlyFac, 200);
       }
     }
-  }, [selectedIncident, selectedFacility, showIncidentPopup]);
+  }, [selectedIncident, selectedFacility, userSelectionToken, styleReady, showIncidentPopup]);
 
   return (
     <div className={`relative w-full ${height} overflow-hidden rounded-lg border border-[#203246] shadow-2xl`}>

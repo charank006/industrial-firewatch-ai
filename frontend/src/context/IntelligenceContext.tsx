@@ -71,6 +71,7 @@ interface IntelligenceContextType {
   analysis: FireAnalysis | null;
   isAnalysisLoading: boolean;
   refresh: () => void;
+  userSelectionToken: number;
 
   // Actions
   setSelectedIncident: (incident: ThermalHotspot | null) => void;
@@ -171,7 +172,7 @@ const mapBackendEventToHotspot = (ev: any): ThermalHotspot => {
     return Math.min(100, Math.round(val));
   };
 
-  const sensorConf = normalizePctVal(ev.sensor_confidence ?? ev.confidence, 85);
+  const sensorConf = normalizePctVal(ev.sensor_confidence ?? ev.detection_confidence_pct ?? ev.confidence ?? ev.detectionConfidence, 88);
   const mlConf = normalizePctVal(ev.ml_confidence ?? (prob <= 1.0 ? prob * 100 : prob), 85);
   const brightness = typeof ev.brightness_k === 'number' ? Number(ev.brightness_k.toFixed(1)) : (typeof ev.brightness === 'number' ? Number(ev.brightness.toFixed(1)) : 332.0);
   const riskScore = normalizePctVal(ev.risk_score, isPers ? 28 : Math.min(100, Math.max(10, Math.round(frpMw * 0.6 + (facDist <= 2.5 ? 20 : 5)))));
@@ -306,6 +307,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [layers, setLayers] = useState<GISLayerVisibility>(initialLayers);
   const [mapMode, setMapMode] = useState<MapMode>('satellite');
+  const [userSelectionToken, setUserSelectionToken] = useState<number>(0);
   const [timelineIndex, setTimelineIndex] = useState<number>(Math.max(0, hotspots.length - 1));
 
   const refresh = () => setReloadToken((n) => n + 1);
@@ -505,10 +507,11 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [hotspots, filteredHotspots]);
 
   const selectIncidentById = (id: string) => {
-    const found = hotspots.find((h) => h.id === id);
+    const found = hotspots.find((h) => h.id === id) || filteredHotspots.find((h) => h.id === id);
     if (found) {
       setSelectedIncident({ ...found });
       setIsDrawerOpen(true);
+      setUserSelectionToken((prev) => prev + 1);
       const fac = facilities.find((f) => f.id === found.nearestFacilityId);
       if (fac) setSelectedFacility(fac);
     }
@@ -554,6 +557,7 @@ export const IntelligenceProvider: React.FC<{ children: React.ReactNode }> = ({ 
         isLoading,
         error,
         historyDays,
+        userSelectionToken,
         refresh,
         analysis,
         isAnalysisLoading,

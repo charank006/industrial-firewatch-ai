@@ -1,19 +1,17 @@
 /**
  * Map key, generated from the shared class palette.
  *
- * The swatches read from CLASS_COLOR so a legend entry cannot disagree
- * with the dot it explains.
+ * Displays the consolidated 3-tier GIS symbology palette.
  */
 
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, Layers } from 'lucide-react';
-import { CLASS_COLOR } from '../../utils/classColors';
-import type { EventClassification } from '../../types';
 
-const SHORT_LABEL: Partial<Record<EventClassification, string>> = {
-  'Agricultural Burning': 'Ag Burning',
-  'Unknown Anomaly': 'Unknown',
-};
+const LEGEND_ITEMS = [
+  { label: 'Industrial / Flares / Mining', color: '#EF4444' },
+  { label: 'Forest & Ag Burning', color: '#10B981' },
+  { label: 'Urban & Baseline Heat', color: '#06B6D4' },
+];
 
 interface MapLegendProps {
   className?: string;
@@ -21,7 +19,6 @@ interface MapLegendProps {
 
 export const MapLegend: React.FC<MapLegendProps> = ({ className = 'relative' }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
-  const entries = Object.entries(CLASS_COLOR) as [EventClassification, string][];
 
   return (
     <div className={`${className} z-30 font-mono text-[11px] text-slate-300`}>
@@ -41,17 +38,17 @@ export const MapLegend: React.FC<MapLegendProps> = ({ className = 'relative' }) 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
-            {entries.map(([label, colour]) => (
-              <div key={label} className="flex items-center space-x-1.5">
+          <div className="space-y-1.5 text-[10px]">
+            {LEGEND_ITEMS.map((item) => (
+              <div key={item.label} className="flex items-center space-x-2">
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: colour }}
+                  style={{ backgroundColor: item.color }}
                 />
-                <span>{SHORT_LABEL[label] ?? label}</span>
+                <span>{item.label}</span>
               </div>
             ))}
-            <div className="flex items-center space-x-1.5 col-span-2 border-t border-[#253340] pt-1">
+            <div className="flex items-center space-x-2 border-t border-[#253340] pt-1.5 mt-1">
               <span className="w-2.5 h-2.5 rounded-sm bg-[#3DB7D9] shrink-0" />
               <span className="text-slate-400">Industrial Facility (OSM)</span>
             </div>
