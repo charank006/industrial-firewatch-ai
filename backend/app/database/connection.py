@@ -27,12 +27,17 @@ def get_engine() -> AsyncEngine:
     """
     global _engine
     if _engine is None:
+        connect_args = {}
+        if "pooler" in settings.DATABASE_URL or "neon.tech" in settings.DATABASE_URL:
+            connect_args["statement_cache_size"] = 0
+
         _engine = create_async_engine(
             settings.DATABASE_URL,
             pool_pre_ping=True,
             pool_size=5,
             max_overflow=10,
             echo=False,
+            connect_args=connect_args,
         )
     return _engine
 
@@ -67,19 +72,21 @@ async def dispose_engine() -> None:
 
 async def probe_postgres() -> Dict[str, Any]:
     """Actually connect and run a query. Never raises."""
+    import re
     started = time.perf_counter()
+    masked = re.sub(r"://.*@", "://***@", settings.DATABASE_URL)
     try:
         async with get_engine().connect() as conn:
             version = (await conn.execute(text("SHOW server_version"))).scalar_one()
         return {
             "ok": True,
-            "detail": f"PostgreSQL {version}",
+            "detail": f"PostgreSQL {version} ({masked})",
             "latency_ms": (time.perf_counter() - started) * 1000,
         }
     except Exception as exc:  # noqa: BLE001 - a probe must report, not propagate
         return {
             "ok": False,
-            "detail": f"{type(exc).__name__}: {str(exc)[:160]}",
+            "detail": f"{type(exc).__name__}: {str(exc)[:120]} (connecting to: {masked})",
             "latency_ms": (time.perf_counter() - started) * 1000,
         }
 
