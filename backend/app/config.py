@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,25 @@ class Settings(BaseSettings):
 
     # --- Spatial database (PostgreSQL + PostGIS) -------------------------
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/firewatch_db"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def clean_database_url(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            return v
+        v = v.strip()
+        if v.startswith("DATABASE_URL="):
+            v = v[len("DATABASE_URL="):].strip()
+        v = v.strip("\"'")
+        v = v.strip()
+        if v.startswith("postgres://"):
+            v = "postgresql+asyncpg://" + v[len("postgres://"):]
+        elif v.startswith("postgresql://"):
+            v = "postgresql+asyncpg://" + v[len("postgresql://"):]
+        v = v.replace("sslmode=require", "ssl=require")
+        v = v.rstrip(".")
+        v = v.replace("&channel_binding=require", "")
+        return v
 
     # Separate database for tests. The DB fixtures TRUNCATE between tests, so
     # pointing them at DATABASE_URL would wipe real ingested detections on
