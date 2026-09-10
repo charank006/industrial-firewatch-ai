@@ -8,7 +8,7 @@ import { useIntelligence } from '../../context/IntelligenceContext';
 import { Factory, Trees, Wheat, Layers } from 'lucide-react';
 
 export const CommandCenterPage: React.FC = () => {
-  const { filters, setFilters, metrics, hotspots } = useIntelligence();
+  const { filters, setFilters, hotspots } = useIntelligence();
 
   const activeMode = filters.eventType;
 
@@ -29,76 +29,72 @@ export const CommandCenterPage: React.FC = () => {
         <GISMapLibre height="h-full" />
       </div>
 
-      {/* 2. TOP MAP TOOLBAR (BALANCED FLEX BAR BETWEEN DRAWER PANELS) */}
-      <div className="absolute top-3 left-[21.5rem] sm:left-[22.5rem] right-[25rem] z-30 hidden md:flex items-center justify-between pointer-events-none font-mono text-xs">
-        
-        {/* Category Quick Filter Pills (Pointer-events-auto) */}
-        <div className="flex items-center gap-1.5 p-1.5 bg-[#070B14]/90 border border-white/15 rounded-full backdrop-blur-2xl shadow-xl pointer-events-auto">
-          <button
-            onClick={() => setFilters((prev) => ({ ...prev, eventType: activeMode === 'Industrial Fire' ? 'ALL' : 'Industrial Fire' }))}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition font-semibold text-[10.5px] cursor-pointer ${
-              activeMode === 'Industrial Fire'
-                ? 'bg-red-500 text-white shadow-md shadow-red-500/30'
-                : 'bg-black/40 hover:bg-white/10 text-slate-300 border border-white/5'
-            }`}
-          >
-            <Factory className="w-3.5 h-3.5 text-red-400" />
-            <span>INDUSTRIAL</span>
-            <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-red-950 text-red-300 text-[9px] font-bold border border-red-500/30">
-              {industrialCount}
-            </span>
-          </button>
+      {/* 2. TOP MAP TOOLBAR (CENTERED HUD CATEGORY BAR) */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 hidden md:flex items-center gap-2 p-1.5 bg-[#070B14]/95 border border-cyan-500/25 rounded-full backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.7)] pointer-events-auto font-mono text-xs">
+        <button
+          onClick={() => setFilters((prev) => ({ ...prev, eventType: activeMode === 'Industrial Fire' ? 'ALL' : 'Industrial Fire' }))}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all font-semibold text-[10.5px] cursor-pointer ${
+            activeMode === 'Industrial Fire'
+              ? 'bg-red-500 text-white shadow-md shadow-red-500/30'
+              : 'bg-black/50 hover:bg-white/10 text-slate-300 border border-white/10'
+          }`}
+        >
+          <Factory className="w-3.5 h-3.5 text-red-400" />
+          <span>INDUSTRIAL</span>
+          <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-red-950/80 text-red-300 text-[9px] font-bold border border-red-500/30">
+            {industrialCount}
+          </span>
+        </button>
 
-          <button
-            onClick={() => setFilters((prev) => ({ ...prev, eventType: activeMode === 'Forest Fire' ? 'ALL' : 'Forest Fire' }))}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition font-semibold text-[10.5px] cursor-pointer ${
-              activeMode === 'Forest Fire'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30'
-                : 'bg-black/40 hover:bg-white/10 text-slate-300 border border-white/5'
-            }`}
-          >
-            <Trees className="w-3.5 h-3.5 text-emerald-400" />
-            <span>FOREST</span>
-            <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 text-[9px] font-bold border border-emerald-500/30">
-              {forestCount}
-            </span>
-          </button>
+        <button
+          onClick={() => setFilters((prev) => ({ ...prev, eventType: activeMode === 'Forest Fire' ? 'ALL' : 'Forest Fire' }))}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all font-semibold text-[10.5px] cursor-pointer ${
+            activeMode === 'Forest Fire'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30'
+              : 'bg-black/50 hover:bg-white/10 text-slate-300 border border-white/10'
+          }`}
+        >
+          <Trees className="w-3.5 h-3.5 text-emerald-400" />
+          <span>FOREST</span>
+          <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-emerald-950/80 text-emerald-300 text-[9px] font-bold border border-emerald-500/30">
+            {forestCount}
+          </span>
+        </button>
 
-          <button
-            onClick={() => setFilters((prev) => ({ ...prev, eventType: activeMode === 'Agricultural Burning' ? 'ALL' : 'Agricultural Burning' }))}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition font-semibold text-[10.5px] cursor-pointer ${
-              activeMode === 'Agricultural Burning'
-                ? 'bg-amber-600 text-white shadow-md shadow-amber-500/30'
-                : 'bg-black/40 hover:bg-white/10 text-slate-300 border border-white/5'
-            }`}
-          >
-            <Wheat className="w-3.5 h-3.5 text-amber-400" />
-            <span>CROP</span>
-            <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-300 text-[9px] font-bold border border-amber-500/30">
-              {agCount}
-            </span>
-          </button>
+        <button
+          onClick={() => setFilters((prev) => ({ ...prev, eventType: activeMode === 'Agricultural Burning' ? 'ALL' : 'Agricultural Burning' }))}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all font-semibold text-[10.5px] cursor-pointer ${
+            activeMode === 'Agricultural Burning'
+              ? 'bg-amber-600 text-white shadow-md shadow-amber-500/30'
+              : 'bg-black/50 hover:bg-white/10 text-slate-300 border border-white/10'
+          }`}
+        >
+          <Wheat className="w-3.5 h-3.5 text-amber-400" />
+          <span>CROP</span>
+          <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-amber-950/80 text-amber-300 text-[9px] font-bold border border-amber-500/30">
+            {agCount}
+          </span>
+        </button>
 
-          <button
-            onClick={() => setFilters((prev) => ({ ...prev, eventType: 'ALL' }))}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition font-semibold text-[10.5px] cursor-pointer ${
-              activeMode === 'ALL'
-                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30 font-bold'
-                : 'bg-black/40 hover:bg-white/10 text-slate-300 border border-white/5'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span>ALL</span>
-            <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-slate-900 text-cyan-300 text-[9px] font-bold border border-cyan-500/30">
-              {metrics.totalDetected}
-            </span>
-          </button>
-        </div>
+        <button
+          onClick={() => setFilters((prev) => ({ ...prev, eventType: 'ALL' }))}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all font-semibold text-[10.5px] cursor-pointer ${
+            activeMode === 'ALL'
+              ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/40 font-bold'
+              : 'bg-black/50 hover:bg-white/10 text-slate-300 border border-white/10'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5 text-cyan-400" />
+          <span>ALL</span>
+          <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-slate-900 text-cyan-300 text-[9px] font-bold border border-cyan-500/30">
+            {hotspots.length}
+          </span>
+        </button>
+      </div>
 
-        {/* Floating Map Layer & Basemap Controls */}
-        <div className="pointer-events-auto">
-          <MapControls className="relative" />
-        </div>
+      {/* 2b. FLOATING MAP CONTROLS (POSITIONED NEXT TO RIGHT DRAWER) */}
+      <div className="absolute top-3 right-[23rem] sm:right-[24rem] xl:right-[25rem] z-30 hidden md:block pointer-events-auto">
+        <MapControls className="relative" />
       </div>
 
       {/* 3. LEFT PANEL: SITUATION RAIL & ACTIVE ANOMALY QUEUE */}

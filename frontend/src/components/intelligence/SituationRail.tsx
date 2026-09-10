@@ -39,8 +39,9 @@ export const SituationRail: React.FC = () => {
             ACTIVE ANOMALY QUEUE
           </span>
         </div>
-        <span className="text-[10px] font-bold px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/40 rounded-full">
-          {filteredHotspots.length} ACTIVE
+        <span className="text-[10px] font-bold px-2.5 py-0.5 bg-red-500/15 text-red-400 border border-red-500/30 rounded-full flex items-center gap-1.5 font-mono tracking-wide">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+          {filteredHotspots.length} QUEUED
         </span>
       </div>
 
@@ -50,7 +51,7 @@ export const SituationRail: React.FC = () => {
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => setFilters((prev) => ({ ...prev, severity: 'ALL' }))}
-            className={`p-3 rounded-lg border text-left transition ${
+            className={`p-3 rounded-xl border text-left transition-all ${
               filters.severity === 'ALL'
                 ? 'bg-cyan-950/40 border-cyan-500/50 text-white shadow-md'
                 : 'bg-black/40 border-white/10 text-slate-400 hover:border-white/20'
@@ -62,7 +63,7 @@ export const SituationRail: React.FC = () => {
 
           <button
             onClick={() => setFilters((prev) => ({ ...prev, severity: 'HIGH' }))}
-            className={`p-3 rounded-lg border text-left transition ${
+            className={`p-3 rounded-xl border text-left transition-all ${
               filters.severity === 'HIGH'
                 ? 'bg-red-950/40 border-red-500/50 text-white shadow-md'
                 : 'bg-black/40 border-white/10 text-slate-400 hover:border-red-500/40'
@@ -70,7 +71,7 @@ export const SituationRail: React.FC = () => {
           >
             <span className="text-[9px] text-red-400 uppercase font-bold block tracking-wider">HIGH PRIORITY</span>
             <span className="text-lg font-bold text-red-400">
-              {filteredHotspots.filter((h) => (h.riskScore ?? 0) >= 70 || h.severity === 'CRITICAL').length}
+              {filteredHotspots.filter((h) => (h.riskScore ?? 0) >= 70 || h.severity === 'CRITICAL' || h.severity === 'HIGH').length}
             </span>
           </button>
         </div>
