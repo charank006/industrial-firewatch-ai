@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 import { classColorMatchExpression } from '../../utils/classColors';
 import { useIntelligence } from '../../context/IntelligenceContext';
 import { formatDisplayClassification } from '../intelligence/SituationRail';
