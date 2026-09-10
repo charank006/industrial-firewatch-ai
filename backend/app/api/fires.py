@@ -18,6 +18,7 @@ inventing a class. Its severity is an openly provisional FRP band, flagged
 from __future__ import annotations
 
 import datetime
+import logging
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
@@ -37,6 +38,8 @@ from app.models.models import (
     WeatherObservation,
 )
 from app.services.classifier.scorer import CLASS_LABEL
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["fires"])
 
